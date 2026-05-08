@@ -669,33 +669,19 @@
     });
     syncMuteUi();
 
-    // Back button — mirror of the mute toggle in the bottom-left.
-    // Sends the visitor back to wherever they came from. Prefers
-    // document.referrer over history.back() because:
-    //  • the canonical-host redirect (quentinnn.com → www.quentinnn.com)
-    //    confuses history — history.back() can land on the redirect and
-    //    bounce right back to the placeholder.
-    //  • on direct visits (typed URL, fresh tab, bookmark) history.back()
-    //    is a no-op and the button looks broken.
-    // If there's no referrer AND no history depth, hide the button entirely
-    // so it never sits there doing nothing.
-    const backBtn = document.getElementById('back-btn');
-    const backTarget = document.referrer && document.referrer !== location.href
-      ? document.referrer
-      : null;
-    const canGoBack = !!backTarget || window.history.length > 1;
-    if (!canGoBack) {
-      backBtn.style.display = 'none';
-    } else {
-      backBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (backTarget) {
-          location.href = backTarget;
-        } else {
-          history.back();
-        }
-      });
-    }
+    // Back button — returns the visitor to the preloader ("click to start").
+    // It's an in-page back, not a browser back: removes the preloader-passed
+    // and unlocked body classes (so the gate fades out and the preloader
+    // fades back in), clears the input, and forgets the session unlock so
+    // a re-entry actually re-challenges the password. Audio keeps playing.
+    document.getElementById('back-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.body.classList.remove('unlocked', 'preloader-passed');
+      unlocked = false;
+      gateInput.value = '';
+      syncInputWidth();
+      try { sessionStorage.removeItem(UNLOCK_KEY); } catch (_) {}
+    });
 
     // ENTER button: dismisses the preloader and reveals the password gate.
     const preloaderEnterBtn = document.getElementById('preloader-enter');
