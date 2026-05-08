@@ -670,12 +670,32 @@
     syncMuteUi();
 
     // Back button — mirror of the mute toggle in the bottom-left.
-    // Goes to whatever page linked here. If the user landed directly (no
-    // history), history.back() is a no-op; that's fine for a placeholder.
-    document.getElementById('back-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      history.back();
-    });
+    // Sends the visitor back to wherever they came from. Prefers
+    // document.referrer over history.back() because:
+    //  • the canonical-host redirect (quentinnn.com → www.quentinnn.com)
+    //    confuses history — history.back() can land on the redirect and
+    //    bounce right back to the placeholder.
+    //  • on direct visits (typed URL, fresh tab, bookmark) history.back()
+    //    is a no-op and the button looks broken.
+    // If there's no referrer AND no history depth, hide the button entirely
+    // so it never sits there doing nothing.
+    const backBtn = document.getElementById('back-btn');
+    const backTarget = document.referrer && document.referrer !== location.href
+      ? document.referrer
+      : null;
+    const canGoBack = !!backTarget || window.history.length > 1;
+    if (!canGoBack) {
+      backBtn.style.display = 'none';
+    } else {
+      backBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (backTarget) {
+          location.href = backTarget;
+        } else {
+          history.back();
+        }
+      });
+    }
 
     // ENTER button: dismisses the preloader and reveals the password gate.
     const preloaderEnterBtn = document.getElementById('preloader-enter');
