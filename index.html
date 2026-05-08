@@ -1,111 +1,764 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>quentin.</title>
+  <link rel="icon" href="data:,">
+
+  <!-- Color the iOS Safari URL bar (and Android Chrome top bar) to match the
+       VHS blue. (#1e10be was sampled from the actual VHS frame.) -->
+  <meta name="theme-color" content="#1e10be">
   <style>
     @font-face {
       font-family: 'LowerResolution';
       src: url('LowerResolution-period.ttf') format('truetype');
       font-display: swap;
     }
-
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    html, body {
-      height: 100%;
-      width: 100%;
-      background: #fff;
-      overflow: hidden;
+    @font-face {
+      font-family: 'VCR OSD Mono';
+      src: url('VCR_OSD_MONO.ttf') format('truetype');
+      font-display: swap;
     }
 
-    body {
+    /* ---- Pre-password preloader ---- */
+    .preloader {
+      position: fixed;
+      inset: 0;
+      z-index: 65;                                 /* above wordmark (60), below gate (70) */
       display: flex;
       align-items: center;
       justify-content: center;
+      pointer-events: none;                        /* button captures pointer; rest is transparent */
+      /* Chunky stepped fade — opacity drops in 10% jumps over 1.4s instead of
+         interpolating smoothly. Feels chopped/digital, not analog crossfade. */
+      transition: opacity 1.4s steps(10);
+    }
+    body.preloader-passed .preloader,
+    body.unlocked .preloader { opacity: 0; pointer-events: none; }
+    .preloader-enter {
+      -webkit-appearance: none;
+      appearance: none;
+      pointer-events: auto;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: clamp(1.4rem, 5.5vw, 2.4rem);
+      letter-spacing: 0;                            /* tight, matches the PLAY overlay */
+      text-transform: uppercase;
+      color: #fff5c4;
+      background: transparent;
+      border: none;                                 /* no box */
+      padding: 0.6rem 1.4rem;                       /* still gives a generous tap target */
+      cursor: pointer;
+      /* Hidden until brand-ready, then stepped fade-in matching the wordmark.
+         color transition kept smooth (only opacity gets the chunky step). */
+      opacity: 0;
+      transition: opacity 1.4s steps(10), color 0.2s ease;
+      text-shadow:
+         2px  2px 0 rgba(0, 0, 0, 0.95),
+        -2px  2px 0 rgba(0, 0, 0, 0.85),
+         2px -2px 0 rgba(0, 0, 0, 0.78),
+        -2px -2px 0 rgba(0, 0, 0, 0.95),
+         0    3px 0 rgba(0, 0, 0, 0.7),
+         0 0 10px rgba(255, 240, 180, 0.30);
+      filter: blur(0.55px) contrast(1.05);          /* analog softness, like PLAY */
+    }
+    /* Once visible, blink at the same 1s on / 1s off rate as the VHS PLAY
+       indicator. Animation is delayed past the fade-in so opacity steps
+       finish before the blink takes over. */
+    body.brand-ready:not(.preloader-passed) .preloader-enter {
+      opacity: 1;
+      animation: vhs-blink 2s step-end 1.4s infinite;
+    }
+    @keyframes vhs-blink {
+      0%   { opacity: 1; }
+      50%  { opacity: 0; }
+      100% { opacity: 1; }
+    }
+    .preloader-enter:hover,
+    .preloader-enter:active {
+      color: #ffea00;
+    }
+
+    /* ---- Password gate ---- */
+    .gate {
+      position: fixed;
+      inset: 0;
+      z-index: 70;                                 /* above .vhs (50) and .brand (60) */
+      /* No background — frame_04 stays visible underneath through the whole
+         gate phase, so there's no color-step shift when the gate fades in. */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.4rem;
+      padding: 2rem;
+      /* Stepped fade — opacity steps up 10% at a time over 1.4s. Matches
+         the preloader's chopped/digital feel. */
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.4s steps(10);
+    }
+    body.preloader-passed:not(.unlocked) .gate {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .gate-prompt,
+    .gate-input,
+    .gate-input-prefix,
+    .gate-error {
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      color: #fff5c4;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-shadow:
+         2px  2px 0 rgba(0, 0, 0, 0.95),
+        -2px  2px 0 rgba(0, 0, 0, 0.85),
+         2px -2px 0 rgba(0, 0, 0, 0.78),
+        -2px -2px 0 rgba(0, 0, 0, 0.95),
+         0    3px 0 rgba(0, 0, 0, 0.7),
+         0 0 8px rgba(255, 240, 180, 0.30);
+    }
+    .gate-prompt {
+      font-size: clamp(1.4rem, 5.5vw, 2.4rem);
+    }
+    .gate-input-wrap {
+      display: flex;
+      align-items: center;
+      font-size: clamp(1.4rem, 5.5vw, 2.4rem);
+    }
+    .gate-input-prefix {
+      margin-right: 0.4em;
+    }
+    .gate-input {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      border: none;
+      outline: none;
+      font-size: inherit;                          /* match input-wrap's clamp size */
+      /* font-family, letter-spacing, text-transform, and color come from the
+         shared rule above — don't override them with `inherit` or the
+         input ends up in system-ui at default spacing. */
+      width: 0;                                    /* JS sizes this to the typed text */
+      min-width: 0;
+      max-width: 60vw;
+      caret-color: transparent;                    /* we draw our own block cursor */
+      padding: 0;
+      margin: 0;
+      text-indent: 0;
+      text-align: left;
+    }
+    /* Hidden span we measure to compute the input's exact text width.
+       Inherits all .gate-input typography so its measured width matches
+       what the input actually renders (including text-transform). The
+       width/max-width overrides cancel the input's `width: 0` so the
+       measure span can actually grow to fit its text. */
+    .gate-measure {
+      position: absolute;
+      visibility: hidden;
+      white-space: pre;
+      pointer-events: none;
+      width: auto !important;
+      max-width: none !important;
+    }
+    /* Rendered as a text glyph (▌) instead of a styled box so the warm
+       text-shadow glow tints the inside of the block the same way it tints
+       the inside of the surrounding text strokes. A solid background block
+       can't get that interior tint (box-shadow only renders outside). */
+    .gate-cursor {
+      display: inline-block;
+      margin-left: 0.05em;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      color: #fff5c4;
+      text-shadow:
+         2px  2px 0 rgba(0, 0, 0, 0.95),
+        -2px  2px 0 rgba(0, 0, 0, 0.85),
+         2px -2px 0 rgba(0, 0, 0, 0.78),
+        -2px -2px 0 rgba(0, 0, 0, 0.95),
+         0    3px 0 rgba(0, 0, 0, 0.7),
+         0 0 8px rgba(255, 240, 180, 0.30);
+      animation: gate-cursor-blink 1s steps(1) infinite;
+    }
+    .gate-cursor::before { content: "▌"; }
+    @keyframes gate-cursor-blink {
+      50% { opacity: 0; }
+    }
+    .gate-error {
+      font-size: clamp(1.4rem, 5.5vw, 2.4rem);
+      color: #ff6b6b;
+      height: 1.2em;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    .gate-error.visible { opacity: 1; }
+    .gate-submit {
+      -webkit-appearance: none;
+      appearance: none;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: clamp(1.4rem, 5.5vw, 2.4rem);
+      letter-spacing: 0;                            /* tight, matches PLAY/ENTER */
+      text-transform: uppercase;
+      color: #fff5c4;
+      background: transparent;
+      border: none;                                 /* no box */
+      padding: 0.4rem 0.8rem;                       /* slim tap padding, no border to wrap */
+      cursor: pointer;
+      transition: color 0.2s ease;
+      text-shadow:
+         2px  2px 0 rgba(0, 0, 0, 0.95),
+        -2px  2px 0 rgba(0, 0, 0, 0.85),
+         2px -2px 0 rgba(0, 0, 0, 0.78),
+        -2px -2px 0 rgba(0, 0, 0, 0.95),
+         0    3px 0 rgba(0, 0, 0, 0.7),
+         0 0 10px rgba(255, 240, 180, 0.30);
+    }
+    .gate-submit:hover,
+    .gate-submit:active {
+      color: #ffea00;
+    }
+    .gate-prompt,
+    .gate-input,
+    .gate-input-prefix,
+    .gate-cursor,
+    .gate-error,
+    .gate-submit {
+      filter: blur(0.55px) contrast(1.05);
+    }
+    .gate.shaking {
+      animation: gate-shake 0.45s cubic-bezier(.36,.07,.19,.97);
+    }
+
+    /* ---- Corner buttons (mute toggle + back button) ---- */
+    .mute-toggle,
+    .back-btn {
+      -webkit-appearance: none;
+      appearance: none;
+      position: fixed;
+      bottom: 1rem;
+      z-index: 80;                                 /* above gate, preloader, vhs */
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: clamp(0.85rem, 2.5vw, 1.1rem);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #fff5c4;
+      background: transparent;
+      border: none;
+      padding: 0.4rem 0.6rem;
+      cursor: pointer;
+      text-shadow:
+         2px  2px 0 rgba(0, 0, 0, 0.95),
+        -2px  2px 0 rgba(0, 0, 0, 0.85),
+         2px -2px 0 rgba(0, 0, 0, 0.78),
+        -2px -2px 0 rgba(0, 0, 0, 0.95),
+         0    3px 0 rgba(0, 0, 0, 0.7),
+         0 0 8px rgba(255, 240, 180, 0.30);
+      filter: blur(0.55px) contrast(1.05);
+      transition: color 0.2s ease;
+    }
+    .mute-toggle { right: 1rem; }
+    .back-btn    { left:  1rem; }
+    /* Back button is hidden on the preloader (nothing to go back to from the
+       very first screen). Fades in once the user advances to the gate, using
+       the same stepped fade as everything else. */
+    .back-btn {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.4s steps(10);
+    }
+    body.preloader-passed .back-btn {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .mute-toggle:hover, .mute-toggle:active,
+    .back-btn:hover,    .back-btn:active {
+      color: #ffea00;
+    }
+    @keyframes gate-shake {
+      10%, 90%  { transform: translateX(-2px); }
+      20%, 80%  { transform: translateX( 4px); }
+      30%, 50%, 70% { transform: translateX(-8px); }
+      40%, 60%  { transform: translateX( 8px); }
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      width: 100%;
+      background: #000;
+      color: #fff;
+      overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: none;
+    }
+    body {
+      font-family: system-ui, sans-serif;
+    }
+
+    /* Wordmark — fades in once the VHS frames are ready. Same styling
+       recipe as the main site: cream fill, thin uneven outline, glow, blur. */
+    .brand {
+      position: absolute;
+      top: 0;
+      left: 0;
+      /* JS drives this transform every frame for the DVD-bounce.
+         will-change tells the browser to put it on its own layer. */
+      transform: translate3d(0, 0, 0);
+      will-change: transform;
       font-family: 'LowerResolution', system-ui, sans-serif;
-    }
-
-    .glint-svg {
-      width: clamp(20rem, 90vw, 80rem);
-      height: auto;
+      font-size: clamp(3.5rem, 14vw, 11rem);
+      line-height: 1;
+      color: #fff5c4;
+      text-shadow:
+         3px  3px 0 rgba(0, 0, 0, 0.95),
+        -3px  3px 0 rgba(0, 0, 0, 0.85),
+         3px -3px 0 rgba(0, 0, 0, 0.78),
+        -3px -3px 0 rgba(0, 0, 0, 0.95),
+         0    4px 0 rgba(0, 0, 0, 0.9),
+         0   -4px 0 rgba(0, 0, 0, 0.75),
+         4px  0   0 rgba(0, 0, 0, 0.7),
+        -4px  0   0 rgba(0, 0, 0, 0.85),
+         0 0 22px rgba(255, 240, 180, 0.35);
+      filter: blur(0.55px) contrast(1.05);
+      letter-spacing: 0.01em;
+      pointer-events: none;
       user-select: none;
+      -webkit-user-select: none;
+      opacity: 0;
+      /* Stepped fade-in — opacity climbs 10% at a time over 1.4s, same chunky
+         feel as the preloader→gate transition. */
+      transition: opacity 1.4s steps(10);
+      z-index: 60;
     }
+    body.brand-ready .brand { opacity: 1; }
 
-    .glint-base { fill: #2a1352; }
-    .glint-shimmer { mix-blend-mode: screen; }
+    /* VHS layer — stays visible forever (no videos to reveal underneath). */
+    .vhs {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: #000;
+      pointer-events: none;
+    }
+    .vhs img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: right center;
+      display: block;
+      visibility: hidden;
+    }
+    .vhs img.active { visibility: visible; }
   </style>
 </head>
 <body>
+  <form class="gate" id="gate" autocomplete="off" novalidate>
+    <div class="gate-prompt">enter password</div>
+    <div class="gate-input-wrap">
+      <span class="gate-input-prefix">&gt;</span>
+      <input
+        type="text"
+        class="gate-input"
+        id="gate-input"
+        autocomplete="off"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
+        inputmode="text"
+        maxlength="32"
+        autofocus>
+      <span class="gate-cursor" aria-hidden="true"></span>
+    </div>
+    <div class="gate-error" id="gate-error">access denied</div>
+    <button type="submit" class="gate-submit">enter</button>
+  </form>
 
-  <svg class="glint-svg" viewBox="0 0 800 220" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <filter id="texBlur" x="-20%" y="-20%" width="140%" height="140%">
-        <feGaussianBlur stdDeviation="4" edgeMode="duplicate" />
-      </filter>
-      <pattern id="glintA" width="160" height="160" patternUnits="userSpaceOnUse"
-               patternTransform="rotate(18) scale(1.2)">
-        <image filter="url(#texBlur)" href="data:image/png;base64,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" width="160" height="160"/>
-      </pattern>
-      <pattern id="glintB" width="190" height="190" patternUnits="userSpaceOnUse"
-               patternTransform="rotate(-18) scale(1.4)">
-        <image filter="url(#texBlur)" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAAv3UlEQVR42lTaZ7BdVRkG4PPTcRQF0nvv5SY37abXm+TmpueShJCQRkJII42EdBISUkgIhI406YIggiKIoiiKIIqijCgywliQcdQZxx/+EZ/wDmuOM3vO7LPP3mt93/u+X1lrn8qMrnvGtlszpdPWUW1WTWi/vqHLrjk9Ds/qdmBO90ML+5xa3OfMyoH3rKq5d9Owr1064I61gx/aPPzr2+q+dWTSr+6c/e8bpn1wbPJvjkx6a9/YH+8d+6Ndo7+3rvaxlTX3XDrgTs/O63lkQa/js7tf47io9/Wzux9c0u/sioFfMs5lgx5Y1v/2dUMeM+zRSb++evTL20e+sGXEs1cMedydEztsnNRx0+K+N87vdayp98lpna9q6HJ1U6/js7ofaOy2z9cpHbfM73ndgl7HBjdfMLrtqt5frB/eaknf86f7OrLNigntN4xuu3pM28vcObnjlTO77ecjRzxV32nrjK67p3fZtXzAXXvHvrJx6JOrB92/YuDdDFvS7+ZFfU6Pbbd2WMuLPT6+/br6TttNsbD3KTdvHPrUFUO+smXEN7aOeI6dTtYPeWLHyG9fPfr7p6e9f82En3F/56iXXDfUxA4bWDWnxyEGTO28nVW1zZs4ZVifLs7sts90S/vfOqnj5grEGc3Qce0u95vHoDa3x2FzX9LvFsdlg74Mrx0jX9w47CnT7x7zssmOT3knBFw78a2D43+6a9RLV436zpXDnwEu/hq77jUUB+b2uBZSfDCZcyg4ubjvjW7D0JrBDxrzuslv7x7zAwR4HAEL+5ymhvpO29y5uO8ZhgZ3j2NlfPsrHIRiFlcGNZtXCOh3wQzYjWu3bkqnLeBDgHE4zFscGIdJoKctUoD7/nGvEtOaQQ/QBNZ5Pb/nUaMZBBSoohvcMIlhW+ueQ8CGoV+lsLWDH3YCE0zw+tTUPxwc/wYX6NI983oeHdFq6fBWl0DSdA1dd9e1vnRk6+VmZ//0Ljup4f8ImNZ5pwhwFVeN3fY29TpBegwCBCFDKrgfGP86gVPNvnGvIkAE3D7znyfq33Xd3DyhZTYZBwQc4Lm5F/W5wWiOi/veZHBkUDQTyWRh7+t5smnY0+cI+DQCOIYeegfZypp7RQkrfYV4/bkYXTG6zSrIMhg6hYA+50+jocHNm0a1WTmpwyYEuMcVJ4TlTmwZivahD2WhKZQPjHtt87CnVw68m21zexxx3SECPAuTi3qfRBJFQ98hAi7pd7ObEzEsF+i8FgQn69+TALbXvQAoYjUdAoDOWdP5GsU4p6pqAhyEUnFH2CZb0ICMz4Hs8tpHEQ53E0g1cEeACHDl2om/PDvjI8lH3KGHWTwkWA6MaLUMsaaZ1+PIkr6APoVUB2hAADX+m0K8QwFtiYCrRr5IZVxCuXtgYUxmECY6R7RehtFhLZc4wUEhQHT7FQ3j2q0VBAjgrYlKCprWeUeQhVqCJmIXfNzh3dL+t4lLBLgoKAEEHcpbW/sw7SPApwy8qua+pt4nQMY8nnpc3EDcDVLozlHfZfn6IY8jwCymZhUHcWBYIpjccUs1AXAwqdEAVWGcSAGQkEG7q6Y3n7G21z1v6GvGvyHEEAD3XaNf8inW9o/7yQ3T/iiKIehmk5nJwXmHOUI+b/ksgfCKWbRsOmbJbIhBgAgItYYVzkY2mhtEgHs8O6v7QWoa0mIhl4a2XFwIYK0kObzVUnHtOgJqW1xEeiUFEV1cTTSj0/0JQYZJ69L35bWPIIDU3GM6MQdf0obv6pr7PLK65n53kotD4uJmzl0XxG5Dz6EJb4oDUSJ80aZW0QpNG9Cw3IR7IWBqp+1kwSo4Lx9wpyRRIXkG+WQfWuAukeFTTkhpDQFyPTKIfeuIb2IeWLKQpEEdHOAY4wxqaNMI4RxmxfnUzjvkH9A0dt1D/g7GuV+EsfvElN/JYyYSWyZFv0fAKkd5HIjwVcQKAdQNXPWZe8hwpzhwsaQg8/qkOyQ55DRgyfWMVE6MSXCARoAIEBk5KAn96Q7YsPhc8jzj3ONAdE5DZkxMG9BoggCFhye+KXzBIqHhw53sV1mXDbidj4UACYapCOCRKFk+8C4EM6YCNao0oskMB1NiZJzPELBv7Kt7xrwCoyuHP6ttYLQ7YedX5zyJiJb1v82B3qhPLnJw1RXWmMlXhEOf6UbwCHOlTkWMiASTbAYFavU4uAmCrR4pBEhBEJdk9DOwcODDzSUFpXh6CgSizUR4IlhzSd/EgRtAlC6IztYPfYKqZD/op4mIhREKXcoK0gMoDagzFJR8ccU52iBAmrAiHRywHwimYEMhgBQY6SImJAPpThQSrkJiogosIEj1Uti2uuelY6CHAJ9U70SI7RnzQw+4k00I5ADBCjoRYyxOIhL50KltsRBksoFE0dBlN/TBYWIEiACwmh7/VMZhoJ+e9oEI00fhnhlCWLJSWhlXCJCCxLUibHxqQoBxoFBSkF9VXZ/Rl+nAxHnayifL4Y6AdEGyH+Cwzi82pIlYM/ghk+IpCLqzdEdQG9P2XLOOBoepMSFNbRj6pBpGoOzXKPKomgCPlxrgfnk1rTmggMlZUV4xhDMQO5gSApxThBpgRCeEzz5aQHvSAtD3j3tNTPBEJEYprIRF3wsahrZcJHELBQTwGQGeogIJPfHLVdarYCY6PuW3JjWXEBaCGgH5pBDgMJSDtAkcAbpsQJcUJKj9ChrjizbplIcg5i0moMlnziMgXRD6yUUKVcMOTfh5mgiZR0LgiHukLw0hm+GIZo8Y1iHFTeiwAfqu8xcHfIcP+0FhKVNNANmVGuARynPOHijpLBiQptaMFRYIH2IPASxLTUeMFGEOGvcAxBlnrLT2kNL+g0zN1J9ZN0ivfCbV/hfOlA2AQvKJgKhSAIKGfYqPx81tfEVYFyHIUlroohAQ50EpIBwIcJ0MAZ0UREc4Nr5PU+BApYl5xE53DIYjAtIFpfhLGiaiWakvS4F1tY8KaJlAEKMTx4YynRH4q1FBvHMEOOejumIctYH91Hmy/t1qAvxUagCp+ep+7kuDBX2Jjr+8ZkmFKQiAPj26Kg/QNUVAXJagF2xzwDOwgI68ZiANgBrAAsOBFecsw4E0jQBxkAhQuGSDtENuML0xPSIFGccgaD7ySXnfUkVA2jjagaao8tVChvPW6klB9Jg2TsNj8DT7LqKB1nxSsShBQLogzgtig/uEeJoIxIOMEmnIDQ6YotZ0mFZdZNFUo5QW6c4U6KR99iOM8dUEgFGegDg02GNYzrqTkkAkBCnGr1l+SjPij+MVqoe4DKAGWF6z0gEpvJmMAwl2cYAMc/uEC0EhUNimfUrTiYAhLRYlAvgAhXT0CKMF6Ut+Bysl+mooWQiFlhSFgLRxkky2IjxuWKn/0xREiZvTxvFEJFG68clWcpMf0v+5WLogv9pKgbtcb/w0EXCBFP+pjV/GSc9jHSDypFAuWFfXtmhCgAP3SpGATl3hMnVWE2BxqgZkMQ/xJHowui09us5CkPkqo0T7llBZQFRogQoYJyeAlazAzUMO0C/HNF689STguBStuShoEEA4oHQn4xIBg5rPBxksxC+XTO8wJrUKApgahMNGY1whIG0cS7IVgQBPmaukILCmjTOXiAYif4idt0kairCT0gWxJ2bDSJZPEyGOHajVxZFtFjHLBtzBPFQxr/8FjW0+U9PzC5MQII6NltUT9bCf8Z4VKIUAZqsBCBABpKypw6jSiiS+6H3pHUSATXOvYWUJ+SOAAthW2Tz8GTiyg5DBna0rk0EZjcBNG+cGnqtOIKAvVzBnsixW/ZQVPxSshN0AfUCTFaANC44sTZ042FcISBvH9GxFIAB5dFdSkHPIZn9JQjMLU8mFtOEu24oPIi1dEHsAmg3E5Jx8cgTxmVqO1V67DhrZLL2p0XqcN7HDZ4f2OX+qZZ2Mp4b5if0eMbvPQoDRGI8AEaCLMxpkKUl5Aw4do8c5VZmLJaqsQ+voNv7av7PAovsKiljMVT5wwNodlNkNTQPHaDdQk/CXHCgCPSZAZnYLkOQRSLHPCFIBZ9gtbHEAIAsx57IqDxFcCEgbJxKzFZHdUPmqpCBAO8SiSVloTANmQZvGNxuIpQtShI1M6fZZldY0ERyEFwEaWYGJsyy3DgCQ+41pCiPQln297ueNt7IzJl/85GYHHwsBHpFntB6Mlwbshh6e+As7SzgQBzI528SHjFS6GwlKyQwBAgVPgiBBWcn2r+kp1P5lNiSoDFLMpTgdjk+zJrFiyCeSQSYCsovrTtnGRdHq18ChCGMCdq6wXhErBCCVS6DJVkR2Q8ViUlCw4CHbzJvWW21IAjSCDOm66RCQLsh1v5KzMkZWaSLARDc+IcJUyYpfJCWtSUTsF0YuCl8zCm6zyJ8KgJrPfg20m6sJcEKUPDW4ZykGptpZGpJPrFV1NKJKk40buzVYcd09IQATWa8pujiQfySrCgfEmk8WSOKmTAMOOPAJC7pzYF6HgAMkARTumKSvbFimvjvcowI7tBCGNYgRHIUA6EMKuNmKyG4oE0sKAmsWz2pjtulZJQkQPkQQI54YhoB0QWnzs3lF0WkiPIhIQ2kZlCvmuSHvOfjCHp7r+hjvceOb0XUnhM946POxmgCYmMsI6SNNgeNtdc9R8U0NH9KQSiarBO4sMPllhZ8repyy3ON1VmGiECAVglJqzIH/LP9ckQSscRgBcV/TQbLbVxEABe28aLKOLy80ku4VYV2EEM7WGKMLAVKQzzjD8+yGUuvRSW8nBfEnbZzpKLpsR/tqRgCJVAQjIF2QGpAwYgN/0kS4P52xFOpTYmQYMvyEtlSXutbL0YkAldwIwlcQxDDFxoZSNQEsKTVARAodE0lxyFYFld+bZ3ykDtuZP1n/e8fhCW+KA0cIUOopnV+my3KPeXJMUqiJKqyUN8xhSgcPfRIvO/DjnP+JgPJGCU/QKS80dBF8SHIQwt3PmyCKcVAIMIgaYA2VrQjOZJUIu7IbmjaOlTJGmtfYqkJ6HC70Ab50QUagI46RkmBPEwFKjhnWEaUbRLT5mndBtkY0CDItAtzscZmEX7IK+z3rqCYgCTn73uSSN3ocNx3dyHVqqbRzx6x/nW34UBzYn3ciHUGf3hUGEJF/LEQYKZgoKVQlt1IDS0UM0jVZiT6W2dUCGVvzRqlEALpoPyvh8kJDviNSziRN+VUb1/XzYwsBaePS/JTdUCOUFCQbpo0TBIwu29Fu0zjDDmFwL10QOFgC92xSOUkTISMlU2X5YqK0Ydnf552LHESAsqGjx4eYk6zZz5iQVwhwDw4QgEKDZ/vEeghkVGxSSQYH0D86+e375v3Xy0E03Nr4dwSIgLwfVAPSmKJZCBokKVQg4pLOXAdshZy9PyNP4mWiifNGSRAkAlLfhB73ygsND+OW8zzHqqGN6ygEpI2DQrYishvq3AhVu6Fp497TxpXtaCO72Z1wUXhLF+Q8b6nUCc6niKUSZHmRKooGmRruaPMgR3ySFAIgm68OsZXtaDRXE8DI7Kq6J3s+2WZ3GwRtqRKy/ANZ/B2b8s5NDX95pOnju+f8BwEiQEFWCTilodARyRAgYk9SaHZHZEVOiSQplDIqDK1pNpdlFrF5o6Td9DVtuzswH8+TPVIt2KSmA8tPeftcCEgbJ+NnKwKU2dgqKcgj6UzgaJCyHQ0RKUh2MpqjdEEwRTnP4YWzFDHdnrzPGMSIMxyk10I2M3BvQ9BnXetl6cpATFtZoDgAqn4arRBgCt4hILnXONnzYSfhZ7sCCEJWrYKyDHNm+p9umfE3BIiA2xr/IQupAbpbOSe7LPqIpFAgq0nZR6JXExnTyECuaNupNW+URAAC8kbJSda35YWGwOGbRMQN49q7Vo6YXghIG9fvgsZsRWQ3FIVJQfw3QjD1RsmzZTtaqwCO7KWYq3RBAoXnaIa+n1LEUpnZ41wO1SXnDWjWaxwBYk2zeQObzeGeNbnRGCbXCxFGpstQkwsBkM36gDLS6RlNuOug2OAGN2dq+vCUXUhpU/JBgAh4cMHH5A/9U1PfV3g1PMwji6RQg0gP2Q2lJOnEAVjxZDpAVfJGia0IyBslFmfLJS80iF0K4zbjdEf5/4Q2TgYoBJgj+3HZishuqDFLCgKTBwlWU8i+bEfbIZBJrq9/Tw1IAShdkOSbtbscSvgpYpCCo5yQGDJ7qgKmcWBejohjlczOpXPXmZqeiv3czjZZISAvl7KWVCHzRk+6mN39kEh1RaJAP568sSEXeZLwdZwhQOzeOP3PaoA4IKO8GNANJ4Xm1Xp2Qy2kDJjdWfEKXth6yczUCkzZmjdKtKPy0GleaLjDw9kkIVsSU5x9uq0QkOVlHJPsshtqU7qkoISR+ZBBBdmO5nm2CrKXYpGCgHRB2d8WwuXPQu6Ehd1EPphLDpXQ1STjZMvEGzHGqz02cBAg8/hrCQOyoEshpcdqAvJOWDZzoovLGz1kRJ6stdpihj47b0RYyJ6D418PAVl5qQHUc9cnf89xEaNJoTw1RXZD00Znb0qA5pUGlaM8b/Qq5Y0Swap15YVGlgWpRc4BndaoioDnQSMXZSsiu6HCqKQgqsx1EJBt2Y6GXVrM/NWpdEEQ4YMQlj0dGgkRIN1npc3c7HiHaX5CzeLO/mXnz40kfwQMvHA2TeWPWXlJQEnMqyYAENxhhrl0ceWNHjHRO+gNbq78I4gNbtPL27cJAfKP9i//xPJpT806IOiTC4ONnN3Q+MhIqEJM/pAPnUDfed4MIqDiZ5KRHMsLDRakDqcB95M8zo1CABrhXrYishsKnZKC0koLpmyFl+1oTzkRTOBwgoB0QdREWULYgQbbONk0l+i1CuyRQ7EYQM3FJLmRqf4Np4VDgJhzTvhwZy37+SWPVxMgA5QaAJ280RME5gK3KxI96HmU2Tmo0XRbCMhGpoOFyCCUvLVNCnWOreyGKgA4MCbpMDtvF9KS5Y0eaUImb/QqrCkvNBxQE9coyfvu9EKFAEe6umxFZDcUFpiLMJFcXo6TW9mOJoSsIfKWLv/1IHM14GzDX4WwHKqFSBHTIRgfNJIMpWer0rP5U2IyYeP/eLd7HKmBIAzDPgZ3ICXhAIgUiZCAMyAhEZARIhFAzqUIICDgAFyAkEe80PJ6bI+9u0KyRtaux9NVX/119Vd/OgeULtnooGmFat8rtKyfRPLtHABaiJjV7qwTPfYrtggy8KZ9aak873eZBenQxQCQ0tU2YhEbj5ro3pOF0PdPvvMMnThlNJD4E1WwlRcPPwng1tCuthM9HgCATvSYI1mmDjQkjZ6TDLgws1LGsaYBACv2dO1Sz9cNFeZGCIJ5ZVw7uNGO7gTGBTlOUBVklS4mw4U/P/tl/1IS49fqSw8wIi+nfUnbq2jTJ3SZRRmeKqVK0R/YfM7arN/yCDIHgNIjZoGcfRTKGIR9LJ9zIkaJ7hHf6LSTUagQrUqf3jtrdHWKC7nchQEBDyS6ocpocYk3gEcuoR8rEaXJSwmd6BEfAJ3o0aHakk2o4ibL7SiDGFzYfQTVAUAUj0FurRvq+4tuaMwyz4x2dOmk5rbMWRXEY6I7svTKCQDwAEjEfqxtqWoSfIpXhKF3irZfkWNiwHktL/Z3S7JmkLd7GgC4j5jFPlRxXhvT1oK9lt7xmmiZZsUNe1cbET5BKACAQYaj3LhiURPr8rckGPBOrjDKaFB5laRC76yBEjzWiZ44A4BO9AQPymEZ7YQBMEnCBCODEkI5JIkNAKqsB7m1GpmoIwTJkINZxthrR9fGYoCiQdqvCuogN05rzJd/SeyndpAgy9Ppwm6zDgwJ+YG1qhHs7/6wP5+7J4+F0SYJO5QXkfjoAIDe5QD3dSb4EK0JLK0wbiGdinggd3U24tPVwZzcwESAFDWxHl8htI0xwWN1CKEfnv6QJEDlW7yEKuinE70EaVebZmyM2GIHSiKt9U/WjdwavXsAIASVN0oPFTAs0TW6oYNZpoyrHR0xqyN1r+67NbNIzvq4MBNzlcR8Sl9Kaa4ghkZ6ZBp+znuYUpRh9qG84b+0z5TEUH+MaN0WbABgeVCnqdoSnegxEVgKF553H7VWwa5zAIPo9QHACQATI9bptDijLuLrhdDaIfCLEMd+Y+orRkX/KDyiWSd6FgmATvQK3amxnbAi0/pBRe3TKr9ePD3FryfbKr8+XhSob82vdw1+Pdu/5Nf/5/kG/xrzDR4e8w1k2Z5veDPmG2hvMd8wneLXe9dBfj3kFvx6td2t+fWPt/n1l/MN6oW7zzew98V8A0Q35hu+bc83fBzzDb5+c77hXfT66SC/nvMe5Nd7yYJfr9yc8+sBdo/8+nJAwYqovnVkvgEAW/MNZN+fb/B5fL6BBdDGznzDdI/8ekqvOXOSX/91wa/361bFxOLX0/sOv775BgtbnW8QJI/PNwih+/MN9oM78w26pO2EO1AicpQRmvw73/Dg5nxDAPALtd0d+fXWRx1zfj0ATvHrLZ35sKk5v97zV/n17ZC35hvo+sh8Axnn8w1CX87nhdRUZ+zIfAM/9jYIjfkGX1ydb6iMrhu6wq9Xxh3k19MvW57z6wFwil8PAObz6jy/vj3nkfkGN1vzDYXQMd/gp+fzDQpZKzky39BOGABX5xsqo/0ibcht0wW//vWCX29Zq/x6ZTuV3Qe//sucX0+2q/x6uuZe8evn8w0cazHf4HNrvgE28/mGMvap+Qay03g7Yc4E1P35BjeX8w3TDr9e1F7l1/Mv0cNW/hS/frQo6kvHJSHD4NfD4Bb8+q35Bm/bmm/gMYv5BviN+YZHs/kGy1idb2A6L2c7Yb2g/fkGAGzNN0yr/HoYrPLrqcbPW+42v/7tJb+eCw9+fS8pYlzl17OANX797+ru39WWrErgeMUDExlMNtEwyTAz0SQjKIiCJqLQoMbCi0SDB/0yUWhBoaUVBCMRA8HISDA3FwRBEMz8M0z89Fu6XHfXrlW76tz3GuH05fR551btvfbau359v3c94esv+Q2W0MFvsLSm36Cn6TdIx6nfYFLqfl4JG+bqNzjyTf0GmT71G3xtG/h62Trl66XMs/L1P+r5et2ufL0D+JSvt4VFv8ESOvgNTqOnfsP/fuwLR36D7E6/wc8Vv8GYVb/BNtNv0BeR3075ejNl4OtlXOXrZdMFvv4/T/h6o1j5erHu+XqpEANw5DeYQ73fEFhNPLm84Te8d+Q3vF5m693Q8BuESHql37A1fL0P43w2+Xrpf8rXeyJ2wNe/CL7eON3m64Vs4OsNwJHfIG17v8GHjd+g2TFd8oGS7Tz1G342+A1xGq3Ljqx5N1Tc028Q1cFv2KZ8vUXcgD/O1xvhOKsLvl7Tb/P19jXl69Nv8IvpN+hY9RvEK/wGzYi57munfoOkkVJxJhZ+g+XBoE79BgOQfkPeDbW7U79hG/h6/2vTla/XyUt8vQHA17u2CDBrna93WnKDrx/8BjGqfkNqqvYYfoNr+xW/wUYW/YY4jTYFrQd5N9RyUv0GryO/YUu+3gSx18rX6/Ylvt7LfT0Pxytfr2NTvl5ckq93Hu2O2J6vt6wPfL0ZMPD1mhcMsz5XvyFOo9NvsE2Lb+83+JotiP6i3/DV4jdo5OA3yLM4eg1+gxhWv2GLm1kG+Spfb5cDX6/dydcnW7nn67U++XrRhDft+XpL3MDX+znl6625Vs7qNwTVUfyG9079huBQ4ko4Hnr3fsOXW7/BMm6piavl6jdY4qrfYOwNwCaCPr3E1+tJ8vVxfyLos+fi64W44eud/le+fvAb7Cv9Bk1Kv0Ffpn6DTNKevBL2heo3COXgN8RptPgc+A2/tKm4Y1j9BhlQ/QZvgmq15e2Ir7ebnq8XpuTr7aDn633ncb7eCdier0+/wfanfoP+H/kNxjL9BgF9xG+Ip8enfoMmpd9gGRC9zaA5w3uAr/9Bz9eLfuXrRX+Fr/da5Otlie5N/QYNOPIbvlr8BlcY1W8AF0/9Bh2vfsOXLvoN0nfqN2yVr/d6Q3y9ptjCnq+X+wNfbwAqX29eH/H1eihk1W+w6zfhN9h49Ru8LvkNzg6O/AZf3hq+3vgf8PXfCL7eQf+Ur5d6U77er/d8vTE44usdmZKvD79B3Bu/wRbiSjgeKAmQwdOAuBCT/vo7+A0GIIBBR5e8Gyo+uQQ5NJ76De8Uv8EbY5Z+g6Na+A3blK93HTjl6z/1d77euvlR8fV6EiEIvt4J34rfINbB9p76DQYg0t9ZULkbes1vkM3Vb/DmyG/YGr7eABS+/gfrfL2v6dWer3eMus3Xh6aafL1FKbCOU79Bqi76DXEa7SBss67IBr/BjmzBPO79BtGofkPc7tb3I79h6/l63Ui+3vSf8vV2mXy9ZPHa8/UWk4Gv92aRr5dBT/n6l5Wvn/oN9Uo4bk70foMvn/oNtjn4DfL91G9wDOv9hs1/pnDy9VoQfL0nyMnXe035epte4evdNK18vRlQ+Xpo4iJfb47u+frBb5Dg8jSvhJ0d9X6D7bR+wzfjhpKvVb9BNKvfEFBT3EyMxdYS6hjW+w1CZ1C35Ovdxgm+/pOvoaC3wNcL+iJfL+5HfP3gN+SVsMRa8RsMzNRv8E2rgq31fkM9C3IQbvwGa1f6DeZT+A2ONNtVvt4wVL7eDqZ8vdP823y9UUy+3vuer9fOuBJOv0EPn/oNr6Z+g+Pn1G+I859zv+G/qt/wu6t+gy2H37Ct8/XyqPL1cnmFrxf9Rb7e14Kv11Vt1VVNPOXrb/gN5pC4l7uhf/MbJKYdnfoNXsHaCPHgN5jKvd8Q9Hj1G7bK12vcKV+vNVO+3mAMfL0BqHy9pDji620q+Hp0RfD1FpaWr383roTzDzYZsN5viNNog+cgUe+GXvIbfC0tT4mij+k3mMenfoP5uvcbtuDrNfGUr7fmvgm+/oPP/vn1adzf+Hr7OuXrLfHW4uDrw28Q9/AbjMHgN8RptK3Jvno39KLf8F5ano4BFvf0G0h6p36DI+uR37B9ZHx9aqqv+XpvjMcNvl7IjvyGOI2O88tyN/Rl9Rv0pfcb/G5antYr9zC007Re9Bu8Sb9BO6vf4EGFFm57vt4nydc7jxbxPV9vqAe+3gxY5OttrfL138PXu59+na/3Bdk09RsMQPoNltrBb9C7qd/g9cRvKJanFLRHS6ikWfQbzCeRjLN8A2D9jOjrmmin37BVvl77kq/38qU9X28kBr5eIizy9Xkal/UD1vj6d51FVL7eWB7VDzAArd/wMuAUcW/qB/j19Bt8GH6DY1jvN1iHw2/Qfq2SPYPfYAziNkFfP+A+X29gnpevj8Qc+HoTovL1dQDEzsGgrx8gGxq/weqcfoNdBPzjpL73GywA4Tf4sgnqGOssQPOe1g94ZZt9/YD7fL32NXy9JHqkfsDA18ujaf0AB+Gp32DkVuoH+DDrBwjc3m/o6wdof/oNIn65fkDcI1zh6w3AOl8vha/WD0i+3jaNU8/Xm91xdlH9BnsPv8HIyfpTv0GXs37A4DeI6bnf8Om536CDvd8gwpq6+ca0foDLq4Gv1+LK15t6la9v6gfEXclL9QP8btYP6Pn66jf4ZvEbvnbqN1TLU8d952L9gJ8f+w0vG78h7oc7tMzrBxjYnq93slj5+mn9gBTKzvj6X8WVsB0FX+8sYp2vr3dD02/w66d+gyzOsyC5bNQv1Q+wHB37DT+MNJ/6DfGkxFiO9QMe5+tTUxXouOElDW/w9ZJgha/Pu6Gumy75Df611g/Qo0t+g3U1/QYDUP2Gvn5ApKaf8/oBJt1tvj411eTrxeIGX68DK3y9HB/qBzhv8a/OHXu/QfT39QM0YNFv0J2hfkCAWad+gxaaAQZsXj9ALg98vYgv8vXa/Sx8vdE94usNQM/XW1Xtq68fUC1Pv6UBcfrY+w1GMbjdWFElVvoNtX5Asq2N33CzfoCgPy9fLzTm+I6v/8OUr7eX4Ov7+gE23tQPELj0G0TTWmTR0Pneb7Cv6jf4xHtd29cP0OzbfoOA6/I25etdozZ8vTgO9QMu8fX6ucjXT+sHfGatfoCzoKwfIBCN31DrBxjF8Bu0P/0GO631Ax73G4Q3/YbtEl8vuS7VD2j4+qZ+QPD12jDw9R7VifVC/YB/VFHS+Kt+w38Xv8EGa/2A3m8Qw+o3CPS0foAMOK8foGNt/YBXl/j6eAVfH9KI/N3VD+j5+hcr9QNqFSUTTozSb7C6nvoNujD1G2xNmxu/IZ545xM9AZnWD/D96jcYAGn3Yf0Ag1P5+r5+QM/XC31cCecDDf9a+XqDdJWv914a9vUDNCktT1u2/Uv1A2x26jdk/QBxmPoN1m0zoD7Rm/oNTrgP6wc0fH2s/loc9QNW+HqBiAcaAqHpla8XpjW+/v2sH7DC18uJtDztVOcv1Q+QIsd+w9dP6wfkE70jv8HkbvwGEdj2fH1qqmZ31A/w/gZfbyRW+Hp3Q6f1A+IPfPd8fa0foLVxm+xG/QAtXPQbsn6AI0dTPyAuVBu/wYyf1A9wGvcsfL30WeHrBeuIr9eeFb7eXIwYSSXR7P0GmWTshduNCj0XiPQbhvoBxrXxG+y38RuM61A/QNzP6wfIoBt8vaVNZlW+3hUTrmbK1xuAnq/Xn7iUX+HrRUEa2pRp5BjW+w325Z/kk/ZLbbeM0m+o9QOSbb3nN3z3M3/0iNAwpN9gBpzXD7jH14uOTS/y9V7B1/f1A5yVL/L1NiKJ4tZp7zcEJWad0X73EqwtmqFrtX7A434DyNU88Hrb9QNcTK/z9XqV9QNu8/UiMvD1R/UDQrEzbBqffoMBWPcbdP/Ub/Aw4Kdf/MvgN5gZi36DVN78J1Ir9QOSr9emU77eEpR8vV28Ob5+7zd4H9di2n9cP+DHjd8gGr6TT/Rk67R+gOhXv8EAuLG46DfEabSU2tb4+vfzgYakeJivf/8SXy++3pzWD8gnrpqn8U39gMZviAUqn+hZc6Z+g9yvfoMBqH6DM+Ajv0Ee1PoBxvukfoBJHQ804mHbDb7eP5X6Ad++xNdr4mL9APll+6E4HPgNP4zyS9ow9RvilomuNfUDwhevfoMBqH6Dc6GmfkD1G8zm8Bu2db7eOrDC15e7oS/eAl8ffoNWaX/6DQYg/YbF+gE229QPiBKgjd+gF43fYDjTb7B9pzNxV01TtxW+3icrfL3XtH6AjdjfCl9vSK7y9fJL+zXeXYSj+gFeTf0AW278hrjj1vgNTf0AGxz8BgkR2ECpH9Dy9T454us16xn5et1zEA7izBq6yNfrgPuX//Gvn0i/IcCs9Bsk3W2/wTTVBk1Kv0GiLNYP0OXBb3CgOqkf4Lg38PXya8rX20rP18eptNxc4+v/FFeMprCe9Hx9TCkRDL7eMR8CZQDSb9BgrU229Z7f4GzH3gU0/QYz4LbfIGir9QNceizy9dP6ARLTIF/l6x2+TGHdOOPrv6MlH8Juha83AOk3mHyP+w2i9ojf4AuX/AbTdFvk62Vx8vW+v8jXS/OGr4/6AdbQnq9PnkAHkq8X5awfYM71foO2Vb9BG6b1A7Tntt/gNDr9Bns/rR8gbnJCYm2C0vP1lqAzvv6Dq3x9XElZQ1f4ekep/z/m6wW68RuCOat/MWvqN/hZ/QY/q9/ggHTkNwh6rR+gX6f1AyS0zMgHSpvuvTW+PuoHrPP1TsNO+Xp9mPoNmqqf+URPU6d+g+W7+g1CX/0GP4/8Bh0Jv+H7O79B+k/9Bh+6MMoHSjqY9QM+t8LX61JfP8BrWj/AIhD1A1b4ei2zO0OoA4EMN3x9Uz8gn+gd+Q3uIjT1A1ymNPUDfGHqNxitqd/gJQ5Sua8fMPL1OjOtHxClAFf4ekN9na//kQ5k/QChrHy9n/FQvqkfoKtN/QAjIcEbv8H8aPwG0X/iN8BqPNE79htsIS7Fj/yGbcrX69IRX69vK3y9obrK10uilq9/Nx7KN/UDDHnjN4iXJK1+gxmwWD9Ahg1+g8Tq/Qa7tjAM9QPMjEn9AAOwwtfr9gpfbyPhwcZ9856vF5fK14vUEV8vKFO+fsVv0E7LvWU6/QYzYL1+gFhfqh+gkXu/wSI59Ru25Otn9QNeRf0A2b3C10s9+xYdPbeG9ny9DQZfrwNCY5ycgArBVb6+9xu08JH6AVJ4vX5AWCo6eOg3/NvEb9jiVsRi/QDtaPh6Yx7xXeHrTQgdSL7eAKzXDxDrrB9w5DdYeYzubb/BhKt+g1fvN1jELvkNWiueHtNui3y9nTV8vZ96IogrfL3jm8Y9F18/rR/g7KD6DQZg3W/Q8Vo/QGMavyHgXOtYPlA69RvM7w/9hrwV8Qhfn/UDrKE9Xx90yetr0Yav//UNvn7wG6Rk9RvEpfoNdnfkN9hvrR8gFKd+g3Rx4ZIPlKxmff0AS5CIJ1wcgkneDb3G10f9gBW+Pm7FWJ114IivN5bxUP4GX59+g8lU/QYDUP0GjWzqB1S/wRVo+g2um6Z+gzQ3y/OBkhn2tH7Ai8FvsARFhLN+wOvFPOoHLPD1gnWbr49ZnPUDRD/5+sX6AUa94evlMqS38RskR+M3aEP1G+LPVgrZkd+gPWGHTf0GSTD1G7yq3yBEuQRturrC11vlr/L1NqgDydcbgKt8vVj3fP1QP8AMWKwf4PPBb4i7Jp7nHPkNzk3e2dUPsCMXYo3foOXT+gHpN2ynfL1UNebWelsX/RW+3hwMOM68O+LrBeVBvt7RNesHiP5i/YBY1i7VD5D4e79BY478hjiNTrg474YOfoNdG9St4et9aKa4lDeFJdoKX29nOuD1Px/7/BFfb74/wteLsg4nX69ht/0GH/Z+Q1R0H/wGbev9hoSLDcbOb/iGcyrjmn7D1vD1vhRCQc/X+0TL4iQ1+XoDUPl6rT/l6+2i5+u1ZODrjd+i32BTl/wGeWO9OvYbPmj8BsGU5nu/QToKRfUbBHmb8vX6EDTAGV+v2z8RUxtNvv7f/+X/rvP1v73E1xuA5OtP/QabSr9B9pnuff0A6e8Lg9/Q1g/4vckkdeJWxOA3yO8k+6rf4KI1/Iat8vVZP0Cf1/j6X+jAs/D1DokrfL0BGPj6I79B9g31A0z/3m/QPFvIB0qnfoMlSBcCLra1md/wvb3fIPpeT+oHONoEVbnC19tx/MGqhq+XR/FQ/hn5egMw5ev3foNE0c5aPyD9Bq+jv5ilVflAydb6+gFf2dUPiLspvd+gbV7pN9hdqR9wha/XoKwf4NcrX+9wX+sH9Hy9IN7j65v6AfZY/QbNiFy236nfEDcsdfCgfsDLwW8QAUFMuDgEExM3l6Cp3yC/q99gXNNv2K7y9Vk/wABc5etlQc/Xe6N+wCW+Pv0Gzat+gwnR+w0mlkOLDQ5+gwuxq35DVlPd1w/Q33jAF36DJOjrB9zn641Ww9fbyBvi6zVy8BtErfcbDJXoDPUD9PTMb3gx1A/o/QbpEmBW+A12OvUbtkW+3l6P+Hr7eISvx1Yag+TrzQCdWefrL9UP8Lt7v0Fy9H5DwsW2M60fYJpWv8FEb/wGqSACFtVSP6Dl68PzMgCVrxfQU77eLnu+vqkfsM7Xh98g7r3fINCfP/YbDO3Ub0i42EYGv0HaWbdFvPoNOlX9hnoWZFTEx34N21g/oOfr/etVvt733xZf/8I/9X5DXMqu+w2WIOmfcLGOVL9BN5Psq36D+TT4Dd4M9QPM/kn9gH8ivl5Pav0Au+vrB8QxOf9g06nfoJumEbg4bkXEPcr0G+xo6jf4w7MG4NH6AT1fL/uena83AIt8vQA5nR/4+r5+gEngZz5QMlpn9QNe1foBIZhUv0Gq7v2GuENz5Dc4xVqqH5B8vbVvz9ebSnEgfUa+3gCs8PV5NzT5+jiaBTZgPKb1A5z5OEQbsMX6AXF5H3CxKRKCieW39xvEtPoNelf9Bh2/Uz/AACRfv1g/wFlEz9e7PPG1e3y9CZt8vfuIR3x9faLnm+J4yW9IuDheHl3lEjT1G3Sz+g0iPtYP6P2Gvn7AOl+v6T1fH/UDbvD1MugSXx9w7ud29QMCFW38Bu1p/YaxfkAUUxO48Bt8MtQPWPIbmvoBydf73oN8vYFJvl7EF/l6GXSDr9/7DQ4SR35DWqvVb3hn5zf4xeo3BGXkf7UnHgnkWZCNrPsN8/oBla83kR/h62Wxn8nX+3mbr7ewLPL11W/wzd5vSLjY3vd+g03Z/qLf4CB8yW+wwY/fqB+gh7V+gPd9/YDH+Xr7usTXD36D91O/IeFiPdrfDZWeRqj6DQ511W+oZ0FafslvMOoiPvcbHAM+Qr7eEazy9X4r6wes8/WN3xCXNQkXx43l9BsSVBn8Bl/o6wdc9Bu+deQ3fDnrB/R8vSY+O1+/qx/wm6wfsMLXG4Pk66d+gyXIZA+4OIIouNVvkEN7v8HqZwD6+gHrfoO1a+o3mGEakH7DXwHh+pN9t0vXRgAAAABJRU5ErkJggg==" width="190" height="190"/>
-      </pattern>
-    </defs>
+  <div class="brand">quentin.</div>
+  <div class="vhs" id="vhs">
+    <picture>
+      <source srcset="vhs_frames_hd/frame_01.png" media="(pointer: fine)">
+      <img class="vhs-frame" data-i="0" alt="" src="vhs_frames/frame_01.jpg">
+    </picture>
+    <picture>
+      <source srcset="vhs_frames_hd/frame_02.png" media="(pointer: fine)">
+      <img class="vhs-frame" data-i="1" alt="" src="vhs_frames/frame_02.jpg">
+    </picture>
+    <picture>
+      <source srcset="vhs_frames_hd/frame_03.png" media="(pointer: fine)">
+      <img class="vhs-frame" data-i="2" alt="" src="vhs_frames/frame_03.jpg">
+    </picture>
+    <picture>
+      <source srcset="vhs_frames_hd/frame_04.png" media="(pointer: fine)">
+      <img class="vhs-frame active" data-i="3" alt="" src="vhs_frames/frame_04.jpg" fetchpriority="high">
+    </picture>
+  </div>
 
-    <text class="glint-base"
-          x="0"    y="55%" text-anchor="start"  dominant-baseline="middle"
-          font-family="LowerResolution, system-ui, sans-serif"
-          font-size="180"><tspan class="ltr">q</tspan><tspan class="ltr">u</tspan><tspan class="ltr">e</tspan><tspan class="ltr">n</tspan><tspan class="ltr">t</tspan><tspan class="ltr">i</tspan><tspan class="ltr">n</tspan><tspan class="ltr">.</tspan></text>
+  <!-- Pre-password preloader — frame_04 background (already showing via .vhs)
+       + bouncing wordmark + a centered "ENTER" button to advance to the gate. -->
+  <div class="preloader" id="preloader">
+    <button type="button" class="preloader-enter" id="preloader-enter">click to enter</button>
+  </div>
 
-    <text class="glint-shimmer"
-          x="0"    y="55%" text-anchor="start"  dominant-baseline="middle"
-          font-family="LowerResolution, system-ui, sans-serif"
-          font-size="180" fill="url(#glintA)"><tspan class="ltr">q</tspan><tspan class="ltr">u</tspan><tspan class="ltr">e</tspan><tspan class="ltr">n</tspan><tspan class="ltr">t</tspan><tspan class="ltr">i</tspan><tspan class="ltr">n</tspan><tspan class="ltr">.</tspan></text>
+  <!-- Background-audio mute toggle. Sits above every other layer so it stays
+       reachable through the preloader, gate, and unlocked states. -->
+  <button type="button" class="mute-toggle" id="mute-toggle" aria-label="Toggle sound">sound: on</button>
 
-    <text class="glint-shimmer"
-          x="0"    y="55%" text-anchor="start"  dominant-baseline="middle"
-          font-family="LowerResolution, system-ui, sans-serif"
-          font-size="180" fill="url(#glintB)"><tspan class="ltr">q</tspan><tspan class="ltr">u</tspan><tspan class="ltr">e</tspan><tspan class="ltr">n</tspan><tspan class="ltr">t</tspan><tspan class="ltr">i</tspan><tspan class="ltr">n</tspan><tspan class="ltr">.</tspan></text>
-  </svg>
+  <!-- Back button — bottom-left mirror of the mute toggle. history.back()
+       returns to whatever page linked here. -->
+  <button type="button" class="back-btn" id="back-btn" aria-label="Go back">&lt; back</button>
 
   <script>
-    const patA = document.getElementById('glintA');
-    const patB = document.getElementById('glintB');
-    const ltrTspans = document.querySelectorAll('.ltr');
-    const LAYERS = 3, LTR_COUNT = 8, BASE = 180, AMP = 18;
-    const WAVE_SPEED = 2.5, LETTER_GAP = 0.65;
+    // ---- VHS preloader sequence ----
+    // Initial flicker: frame_01 -> _02 -> _03, then alternate _04 <-> _03 forever.
+    // Frame _03 has the "PLAY" overlay; _04 is plain blue. The toggle simulates
+    // the PLAY indicator blinking on a paused VHS deck.
+    const FLICKER_MS         = 130;    // ms per frame in the initial cycle
+    const BRAND_HOLD_MS      = 1100;   // hold on frame_03 so wordmark can land
+    const TOGGLE_MS          = 1000;   // ms per swap during the 4 <-> 3 loop
+    const INITIAL_LAST_INDEX = 2;      // last index of initial cycle (frame_03)
+    const TOGGLE_A           = 3;      // frame_04
+    const TOGGLE_B           = 2;      // frame_03
 
-    let start = null;
-    function tick(now) {
-      if (!start) start = now;
-      const t = (now - start) / 1000;
+    const vhsLayer  = document.getElementById('vhs');
+    const vhsFrames = Array.from(vhsLayer.querySelectorAll('.vhs-frame'));
 
-      const offA = (t * 64) % 160;
-      const offB = -((t * 47) % 190);
-      patA.setAttribute('patternTransform', `rotate(18) scale(1.2) translate(${offA} 0)`);
-      patB.setAttribute('patternTransform', `rotate(-18) scale(1.4) translate(${offB} 0)`);
-
-      const wavePos = t * WAVE_SPEED;
-      for (let i = 0; i < LTR_COUNT; i++) {
-        const size = BASE + AMP * Math.sin(wavePos - i * LETTER_GAP);
-        for (let layer = 0; layer < LAYERS; layer++) {
-          ltrTspans[layer * LTR_COUNT + i].setAttribute('font-size', size);
-        }
-      }
-      // re-center: measure rendered width and lock to mid-x of viewBox
-      const textEls = document.querySelectorAll('text');
-      const totalWidth = textEls[0].getComputedTextLength();
-      const startX = (800 - totalWidth) / 2;
-      textEls.forEach(t => t.setAttribute('x', startX));
-
-
-
-      requestAnimationFrame(tick);
+    let activeIndex = 0;
+    function showFrame(i) {
+      if (i === activeIndex) return;
+      vhsFrames[activeIndex].classList.remove('active');
+      vhsFrames[i].classList.add('active');
+      activeIndex = i;
     }
-    requestAnimationFrame(tick);
-  </script>
 
+    function waitForImg(im) {
+      return im.complete && im.naturalWidth > 0
+        ? Promise.resolve()
+        : new Promise(resolve => {
+            im.addEventListener('load',  resolve, { once: true });
+            im.addEventListener('error', resolve, { once: true });
+          });
+    }
+
+    function startToggle() {
+      let onA = true;
+      showFrame(TOGGLE_A);
+      setInterval(() => {
+        onA = !onA;
+        showFrame(onA ? TOGGLE_A : TOGGLE_B);
+      }, TOGGLE_MS);
+    }
+
+    // No preroll flicker — the page lands on frame_04 directly. Once frames
+    // are ready, the wordmark fades in and starts bouncing. The 04↔03 PLAY
+    // blink toggle is held back until after the password is entered.
+    let toggleStarted = false;
+    function startToggleOnce() {
+      if (toggleStarted) return;
+      toggleStarted = true;
+      startToggle();
+    }
+    function revealBrand() {
+      document.body.classList.add('brand-ready');
+      startBounce();
+    }
+
+    // ---- Password gate ----
+    // Plain-text compare. The previous version hashed the input with
+    // crypto.subtle.digest() to avoid putting the password in source — but
+    // crypto.subtle requires a secure context (HTTPS or localhost), and the
+    // dev server runs on a LAN IP (192.168.x.x). iOS Safari treats LAN IPs
+    // as insecure, so the digest call rejected silently, the gate appeared
+    // dead on phones. Since the gate is client-side anyway and the SHA-256
+    // hash itself sits in source, hashing added obfuscation but no actual
+    // security. Direct compare works in every context.
+    const PASSWORD = 'play';
+    const UNLOCK_KEY = 'quentinnn_unlocked_v1';
+
+    const gate      = document.getElementById('gate');
+    const gateInput = document.getElementById('gate-input');
+    const gateError = document.getElementById('gate-error');
+
+    let unlocked    = false;
+    let framesReady = false;
+
+    // On iOS Safari, position:fixed elements still cover the full layout
+    // viewport when the on-screen keyboard is up — the keyboard just sits
+    // on top. With the gate vertically centered (justify-content: center),
+    // the lower portion of the form (including the submit button) can land
+    // behind the keyboard, making it unreachable to taps. Bind the gate's
+    // height to the visual viewport so its content stays inside the visible
+    // area whether the keyboard is up or down.
+    if (window.visualViewport) {
+      const vv = window.visualViewport;
+      const fitGate = () => {
+        gate.style.height = vv.height + 'px';
+        gate.style.top    = vv.offsetTop + 'px';
+      };
+      vv.addEventListener('resize', fitGate);
+      vv.addEventListener('scroll', fitGate);
+      fitGate();
+    }
+
+    function tryUnlock(value) {
+      // Lowercase the input — iOS predictive text and some autocaps
+      // settings can sneak a capital first letter past `autocapitalize="off"`.
+      if (value.toLowerCase() === PASSWORD) {
+        try { sessionStorage.setItem(UNLOCK_KEY, '1'); } catch (_) {}
+        unlock();
+      } else {
+        showError();
+      }
+    }
+
+    function unlock() {
+      if (unlocked) return;
+      unlocked = true;
+      document.body.classList.add('unlocked');
+      try { gateInput.blur(); } catch (_) {}
+      // Past the gate now — kick off the 04↔03 PLAY blink loop.
+      startToggleOnce();
+    }
+
+    function showError() {
+      gateError.classList.add('visible');
+      gate.classList.add('shaking');
+      gateInput.value = '';
+      setTimeout(() => {
+        gate.classList.remove('shaking');
+      }, 500);
+      setTimeout(() => {
+        gateError.classList.remove('visible');
+      }, 1100);
+    }
+
+    // Make the input grow/shrink with its typed text so the block cursor
+    // sits right after the last character instead of at a fixed offset.
+    const gateMeasure = document.createElement('span');
+    gateMeasure.className = 'gate-input gate-measure';
+    gateMeasure.setAttribute('aria-hidden', 'true');
+    gateInput.parentElement.appendChild(gateMeasure);
+    function syncInputWidth() {
+      gateMeasure.textContent = gateInput.value || '';
+      // +2px buffer absorbs sub-pixel rounding so the last glyph isn't clipped
+      // on the right edge.
+      gateInput.style.width = (gateMeasure.offsetWidth + 2) + 'px';
+      // The input's internal scroll-to-caret behavior can push the first
+      // character off-screen on the left when width grows from 0 — pin it.
+      gateInput.scrollLeft = 0;
+    }
+    gateInput.addEventListener('input', syncInputWidth);
+    // Run once after the VCR font has loaded — measurement before the font
+    // arrives gives a width based on the fallback font.
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(syncInputWidth);
+    } else {
+      syncInputWidth();
+    }
+
+    gate.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = gateInput.value.trim();
+      if (!v) return;
+      tryUnlock(v);
+    });
+
+    // iOS submit-button fix.
+    // The native flow (button click → form submit) breaks on iOS Safari when
+    // the input is focused: tapping the button blurs the input, the keyboard
+    // collapses, the layout shifts under the tap, and the eventual `click`
+    // misses. Two-part fix:
+    //   1. mousedown preventDefault keeps focus on the input — keyboard
+    //      stays up, layout doesn't shift.
+    //   2. pointerup runs the unlock directly, bypassing the click chain
+    //      entirely. Pointer events cover both touch and mouse uniformly,
+    //      so this works on desktop, iOS, and Android with one handler.
+    // unlock() is idempotent, so a duplicate trigger from the form's submit
+    // handler (Enter key) doesn't matter.
+    const gateSubmit = gate.querySelector('.gate-submit');
+    gateSubmit.addEventListener('mousedown', (e) => { e.preventDefault(); });
+    gateSubmit.addEventListener('pointerup', (e) => {
+      if (e.button !== undefined && e.button !== 0) return; // left/primary only
+      e.preventDefault();
+      const v = gateInput.value.trim();
+      if (v) tryUnlock(v);
+    });
+
+    // The input has width:0 when empty, so it has no tap target. Tapping
+    // anywhere on the gate focuses the input — also nicer UX on mobile.
+    // Skip the submit button so its tap submits the form instead of refocusing.
+    gate.addEventListener('click', (e) => {
+      if (e.target === gateInput) return;          // already targeting input
+      if (e.target.closest('.gate-submit')) return; // let submit work normally
+      gateInput.focus();
+    });
+
+    // Already-unlocked sessions skip the gate.
+    try {
+      if (sessionStorage.getItem(UNLOCK_KEY) === '1') unlock();
+    } catch (_) {}
+
+    // Wait for all 4 frames to load, then bring the wordmark on. The preloader
+    // (centered ENTER button) is already visible — its tap advances to the
+    // password gate. If a prior session is already unlocked, skip the
+    // preloader + gate and start the toggle immediately.
+    function startWhenReady() {
+      if (!framesReady) return;
+      if (startWhenReady.fired) return;
+      startWhenReady.fired = true;
+      revealBrand();
+      if (unlocked) {
+        // Already unlocked from sessionStorage — skip the entry experience.
+        document.body.classList.add('preloader-passed');
+        startToggleOnce();
+      }
+    }
+    Promise.all(vhsFrames.map(waitForImg)).then(() => {
+      framesReady = true;
+      startWhenReady();
+    });
+    setTimeout(() => {
+      framesReady = true;
+      startWhenReady();
+    }, 2000);
+
+    // ---- Background audio ----
+    // Plays on the first user gesture (ENTER tap) so iOS/Safari autoplay
+    // policies are satisfied. Loops, fades in to avoid a hard pop. The mute
+    // toggle in the corner lets the user kill it whenever.
+    const bgAudio = new Audio('youtube-audio-compressed.mp3');
+    bgAudio.loop = true;
+    bgAudio.volume = 0;
+    bgAudio.preload = 'auto';
+
+    let audioStarted = false;
+    function startAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
+      bgAudio.play().then(() => {
+        // Fade in to ~50% over ~1.6s so it doesn't slam in
+        const target = 0.5;
+        const stepMs = 80;
+        const steps  = 20;
+        let i = 0;
+        const id = setInterval(() => {
+          i += 1;
+          bgAudio.volume = Math.min(target, (i / steps) * target);
+          if (i >= steps) clearInterval(id);
+        }, stepMs);
+      }).catch(() => {
+        // If autoplay still gets blocked for any reason, leave audioStarted
+        // false-equivalent so the next interaction can retry.
+        audioStarted = false;
+      });
+    }
+
+    // Mute toggle — small VCR-styled button bottom-right.
+    const muteBtn = document.getElementById('mute-toggle');
+    function syncMuteUi() {
+      muteBtn.textContent = bgAudio.muted ? 'sound: off' : 'sound: on';
+    }
+    muteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      bgAudio.muted = !bgAudio.muted;
+      // First click also counts as a user gesture — start audio if it
+      // hasn't started yet (e.g., user toggles before tapping ENTER).
+      if (!audioStarted && !bgAudio.muted) startAudio();
+      syncMuteUi();
+    });
+    syncMuteUi();
+
+    // Back button — mirror of the mute toggle in the bottom-left.
+    // Goes to whatever page linked here. If the user landed directly (no
+    // history), history.back() is a no-op; that's fine for a placeholder.
+    document.getElementById('back-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      history.back();
+    });
+
+    // ENTER button: dismisses the preloader and reveals the password gate.
+    const preloaderEnterBtn = document.getElementById('preloader-enter');
+    preloaderEnterBtn.addEventListener('click', () => {
+      document.body.classList.add('preloader-passed');
+      startAudio();
+      // Focus the input after the gate's fade-in finishes — premature focus
+      // on iOS can pop the keyboard while the gate is still transparent.
+      setTimeout(() => { try { gateInput.focus(); } catch (_) {} }, 550);
+    });
+
+    // ---- DVD-style bounce ----
+    // Wordmark drifts diagonally and reflects off the viewport edges.
+    // Speeds are pixels-per-second so 60Hz / 90Hz / 120Hz devices all
+    // animate at the same visual pace (rAF fires at display refresh rate).
+    const brand = document.querySelector('.brand');
+    const SPEED_X = 78;    // px/sec ( = 1.3 px/frame at 60fps )
+    const SPEED_Y = 57;    // px/sec ( = 0.95 px/frame at 60fps )
+
+    // Bright saturated hues that pop against the VHS blue. The wordmark
+    // cycles through these on every edge hit, like the DVD screensaver.
+    const DVD_COLORS = [
+      '#ff4d4d',   // red
+      '#ff9933',   // orange
+      '#ffea00',   // yellow
+      '#4dff7a',   // green
+      '#4de0ff',   // cyan
+      '#b366ff',   // purple
+      '#ff66d4',   // pink
+    ];
+    let dvdColorIdx = 0;
+    function nextBounceColor() {
+      dvdColorIdx = (dvdColorIdx + 1) % DVD_COLORS.length;
+      brand.style.color = DVD_COLORS[dvdColorIdx];
+    }
+
+    let bx = 0, by = 0;
+    let bdx = SPEED_X, bdy = SPEED_Y;
+    let lastFrameMs = 0;
+
+    function placeStartingPosition() {
+      const bw = brand.offsetWidth, bh = brand.offsetHeight;
+      bx = Math.max(0, (window.innerWidth  - bw) / 2);
+      by = Math.max(0, (window.innerHeight - bh) * 0.34);
+      brand.style.transform = `translate3d(${bx}px, ${by}px, 0)`;
+    }
+
+    function bounceTick(nowMs) {
+      // dt in seconds, capped at 50ms so a tab-restore doesn't teleport us.
+      const dt = lastFrameMs ? Math.min((nowMs - lastFrameMs) / 1000, 0.05) : 0;
+      lastFrameMs = nowMs;
+
+      const bw = brand.offsetWidth, bh = brand.offsetHeight;
+      const maxX = Math.max(0, window.innerWidth  - bw);
+      const maxY = Math.max(0, window.innerHeight - bh);
+
+      bx += bdx * dt;
+      by += bdy * dt;
+
+      if (bx <= 0)    { bx = 0;    bdx = Math.abs(bdx);  nextBounceColor(); }
+      if (bx >= maxX) { bx = maxX; bdx = -Math.abs(bdx); nextBounceColor(); }
+      if (by <= 0)    { by = 0;    bdy = Math.abs(bdy);  nextBounceColor(); }
+      if (by >= maxY) { by = maxY; bdy = -Math.abs(bdy); nextBounceColor(); }
+
+      brand.style.transform = `translate3d(${bx}px, ${by}px, 0)`;
+      requestAnimationFrame(bounceTick);
+    }
+
+    function startBounce() {
+      placeStartingPosition();
+      // Land on the first DVD palette color from the start so the wordmark
+      // never appears in its CSS-default cream — looks more like the screensaver.
+      brand.style.color = DVD_COLORS[dvdColorIdx];
+      lastFrameMs = 0;       // reset so the first frame's dt is 0, not garbage
+      requestAnimationFrame(bounceTick);
+    }
+
+    // Reset starting placement on resize so the wordmark doesn't end up off-screen.
+    window.addEventListener('resize', () => {
+      const bw = brand.offsetWidth, bh = brand.offsetHeight;
+      bx = Math.min(bx, Math.max(0, window.innerWidth  - bw));
+      by = Math.min(by, Math.max(0, window.innerHeight - bh));
+    });
+  </script>
 </body>
 </html>
