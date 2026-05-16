@@ -1,0 +1,1313 @@
+    @font-face {
+      font-family: 'LowerResolution';
+      src: url('../LowerResolution-period.ttf') format('truetype');
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'VCR OSD Mono';
+      src: url('../VCR_OSD_MONO.ttf') format('truetype');
+      font-display: swap;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      /* Black so iOS Safari's translucent chrome doesn't get tinted by a
+         document-level color. Lets the chrome's blur sample the actual video
+         content above instead of leaning toward a static body color. */
+      background: #000;
+      color: #fff;
+      font-family: 'LowerResolution', system-ui, sans-serif;
+      overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: none;
+    }
+
+    /* ---- Pre-password preloader ---- */
+    /* The whole preloader layer is the click target — tap anywhere to advance
+       to the password gate. The frame_04 backdrop is the vhs-intro layer below
+       (z-index 50); the bouncing wordmark sits on its own layer above. */
+    .preloader {
+      position: fixed;
+      inset: 0;
+      z-index: 65;
+      pointer-events: auto;
+      cursor: pointer;
+      transition: opacity 1.4s steps(10);
+    }
+    body.preloader-passed .preloader,
+    body.unlocked .preloader { opacity: 0; pointer-events: none; }
+
+    /* ---- DVD-bounce wordmark (preloader + gate phase) ---- */
+    .brand-bounce {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform: translate3d(0, 0, 0);
+      will-change: transform;
+      font-family: 'LowerResolution', system-ui, sans-serif;
+      font-size: clamp(3.5rem, 14vw, 11rem);
+      line-height: 1;
+      color: #fff5c4;
+      text-shadow:
+         3px  3px 0 rgba(0, 0, 0, 0.95),
+        -3px  3px 0 rgba(0, 0, 0, 0.85),
+         3px -3px 0 rgba(0, 0, 0, 0.78),
+        -3px -3px 0 rgba(0, 0, 0, 0.95),
+         0    4px 0 rgba(0, 0, 0, 0.9),
+         0   -4px 0 rgba(0, 0, 0, 0.75),
+         4px  0   0 rgba(0, 0, 0, 0.7),
+        -4px  0   0 rgba(0, 0, 0, 0.85),
+         0 0 22px rgba(255, 240, 180, 0.35);
+      filter: blur(0.55px) contrast(1.05);
+      letter-spacing: 0.01em;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-select: none;
+      opacity: 0;
+      transition: opacity 1.4s steps(10);
+      z-index: 60;
+    }
+    body.brand-bounce-ready .brand-bounce { opacity: 1; }
+    /* On unlock, fade the bouncing wordmark out so the static idle brand can
+       take over without two wordmarks on screen. */
+    body.unlocked .brand-bounce { opacity: 0; }
+
+    /* ---- Password gate ---- */
+    .gate {
+      position: fixed;
+      inset: 0;
+      z-index: 70;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.4rem;
+      padding: 2rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.4s steps(10);
+      /* Filter on the parent applies to all gate children exactly once. If
+         children set their own filter on top, they get compound blur. Hoist
+         it here so prompt/input/submit/try-another all share one pass. */
+      filter: blur(0.55px) contrast(1.05);
+    }
+    body.preloader-passed:not(.unlocked) .gate {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .gate-prompt,
+    .gate-input,
+    .gate-input-prefix,
+    .gate-error {
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      color: #fff5c4;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.22em rgba(255, 240, 180, 0.30);
+    }
+    .gate-prompt { font-size: clamp(1.4rem, 5.5vw, 2.4rem); }
+    .gate-input-wrap {
+      display: flex;
+      align-items: center;
+      font-size: clamp(1.4rem, 5.5vw, 2.4rem);
+    }
+    .gate-input-prefix { margin-right: 0.4em; }
+    .gate-input {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      border: none;
+      outline: none;
+      font-size: inherit;
+      width: 0;
+      min-width: 0;
+      max-width: 60vw;
+      caret-color: transparent;
+      padding: 0;
+      margin: 0;
+      text-indent: 0;
+      text-align: left;
+    }
+    .gate-measure {
+      position: absolute;
+      visibility: hidden;
+      white-space: pre;
+      pointer-events: none;
+      width: auto !important;
+      max-width: none !important;
+    }
+    .gate-cursor {
+      display: inline-block;
+      margin-left: 0.05em;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      color: #fff5c4;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.22em rgba(255, 240, 180, 0.30);
+      animation: gate-cursor-blink 1s steps(1) infinite;
+    }
+    .gate-cursor::before { content: "▌"; }
+    @keyframes gate-cursor-blink { 50% { opacity: 0; } }
+    .gate-error {
+      font-size: clamp(1.4rem, 5.5vw, 2.4rem);
+      color: #ff6b6b;
+      /* Collapse to zero height when invisible so the submit + cycle buttons
+         sit snug under the input. Expands to 1.2em only when an error fires;
+         the screen-shake animation telegraphs the layout shift. */
+      height: 0;
+      overflow: hidden;
+      opacity: 0;
+      transition: height 0.2s ease, opacity 0.15s ease;
+    }
+    .gate-error.visible {
+      height: 1.2em;
+      opacity: 1;
+    }
+    .gate-submit {
+      -webkit-appearance: none;
+      appearance: none;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: clamp(1.4rem, 5.5vw, 2.4rem);
+      letter-spacing: 0;
+      text-transform: uppercase;
+      color: #fff5c4;
+      background: transparent;
+      border: none;
+      padding: 0.4rem 0.8rem;
+      cursor: pointer;
+      transition: color 0.2s ease;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.28em rgba(255, 240, 180, 0.30);
+    }
+    .gate-submit:hover, .gate-submit:active { color: #ffea00; }
+    /* Filter is now applied by the .gate parent — no per-child filter needed. */
+    .gate.shaking { animation: gate-shake 0.45s cubic-bezier(.36,.07,.19,.97); }
+    @keyframes gate-shake {
+      10%, 90%      { transform: translateX(-2px); }
+      20%, 80%      { transform: translateX( 4px); }
+      30%, 50%, 70% { transform: translateX(-8px); }
+      40%, 60%      { transform: translateX( 8px); }
+    }
+
+    /* ---- Corner buttons (mute toggle + back button) ---- */
+    .mute-toggle,
+    .back-btn {
+      -webkit-appearance: none;
+      appearance: none;
+      position: fixed;
+      bottom: 1rem;
+      z-index: 80;                                 /* above gate + preloader + vhs */
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: clamp(0.85rem, 2.5vw, 1.1rem);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #fff5c4;
+      background: transparent;
+      border: none;
+      padding: 0.4rem 0.6rem;
+      cursor: pointer;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.22em rgba(255, 240, 180, 0.30);
+      filter: blur(0.55px) contrast(1.05);
+      transition: opacity 1.4s steps(10), color 0.2s ease;
+      /* Hidden on the preloader: audio only starts on the preloader click and
+         there's nothing to go back to from the first screen. Fade both in
+         together once the user advances past the preloader. */
+      opacity: 0;
+      pointer-events: none;
+    }
+    .mute-toggle { right: 1rem; }
+    .back-btn    { left:  1rem; }
+    body.preloader-passed .mute-toggle,
+    body.preloader-passed .back-btn {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .mute-toggle:hover, .mute-toggle:active,
+    .back-btn:hover,    .back-btn:active { color: #ffea00; }
+
+    /* ---- "try another way" button on the gate (and bypass panels) ---- */
+    /* Dim the cream fill via the color's alpha channel — not via `opacity`,
+       which would also flatten the text-shadow stack and let the site-wide
+       0.55px blur smear the soft, low-contrast result. The shadow stack
+       stays at full strength so the outline is crisp, and the fill reads
+       as a muted cream that's still in the same color family. */
+    .gate-try-another {
+      -webkit-appearance: none;
+      appearance: none;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: clamp(0.78rem, 2.6vw, 1rem);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #fff5c4;
+      background: transparent;
+      border: none;
+      padding: 0.4rem 0.8rem;
+      margin-top: 0.4rem;
+      cursor: pointer;
+      transition: color 0.2s ease;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.22em rgba(255, 240, 180, 0.30);
+      /* No own filter — every parent container (.gate, .minesweeper, .poker,
+         .tk) already applies blur(0.55px). A second filter here would compound
+         and make the cycle button visibly fuzzier than its siblings. */
+    }
+    .gate-try-another:hover, .gate-try-another:active { color: #ffea00; }
+
+    /* ---- Minesweeper panel ---- */
+    /* Same surface treatment as .gate. Visible only while
+       body.minesweeper-on:not(.unlocked). Fades in as .gate fades out. */
+    .minesweeper {
+      position: fixed;
+      inset: 0;
+      z-index: 72;                                 /* above gate (70), below corner btns (80) */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.9rem;
+      padding: 2rem;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      color: #fff5c4;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.22em rgba(255, 240, 180, 0.30);
+      filter: blur(0.55px) contrast(1.05);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.4s steps(10);
+    }
+    body.minesweeper-on:not(.unlocked) .minesweeper {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    /* Hide the gate while minesweeper is active. */
+    body.minesweeper-on:not(.unlocked) .gate {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .ms-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      width: min(20rem, 88vw);
+      font-size: clamp(0.95rem, 3vw, 1.2rem);
+    }
+    .ms-mines-left { color: #ff4d4d; }
+    .ms-timer      { letter-spacing: 0.12em; transition: color 0.2s ease; }
+    .ms-timer.low  { color: #ff4d4d; }
+    .ms-status     { letter-spacing: 0.12em; }
+    .ms-grid {
+      display: grid;
+      grid-template-columns: repeat(9, 1fr);
+      gap: 2px;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 3px;
+    }
+    .ms-cell {
+      -webkit-appearance: none;
+      appearance: none;
+      width: min(38px, 9vw);
+      height: min(38px, 9vw);
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: min(1.05rem, 4vw);
+      background: rgba(255, 245, 196, 0.18);
+      color: #fff5c4;
+      border: 1px solid rgba(255, 245, 196, 0.35);
+      cursor: pointer;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      text-shadow: 0 0 6px rgba(255, 240, 180, 0.30);
+      transition: background 0.1s, color 0.1s;
+    }
+    .ms-cell.revealed {
+      background: rgba(0, 0, 0, 0.4);
+      border-color: rgba(255, 245, 196, 0.18);
+      cursor: default;
+    }
+    .ms-cell.flagged { color: #ff4d4d; }
+    .ms-cell.mine    { background: rgba(255, 77, 77, 0.55); color: #fff5c4; }
+    .ms-cell.exploded { background: rgba(255, 77, 77, 0.9); }
+    .ms-footer {
+      display: flex;
+      gap: 1.2rem;
+      font-size: clamp(0.9rem, 2.6vw, 1.1rem);
+    }
+    .ms-btn {
+      -webkit-appearance: none;
+      appearance: none;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: inherit;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #fff5c4;
+      background: transparent;
+      border: none;
+      padding: 0.4rem 0.8rem;
+      cursor: pointer;
+      transition: color 0.2s ease;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.22em rgba(255, 240, 180, 0.30);
+    }
+    .ms-btn:hover, .ms-btn:active { color: #ffea00; }
+    .ms-hint {
+      font-size: clamp(0.65rem, 2vw, 0.85rem);
+      letter-spacing: 0.1em;
+      text-align: center;
+      margin-top: 0.2rem;
+    }
+
+    /* ---- Video poker panel (third bypass — royal flush only) ---- */
+    .poker {
+      position: fixed;
+      inset: 0;
+      z-index: 72;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.8rem;
+      padding: 2rem;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      color: #fff5c4;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.22em rgba(255, 240, 180, 0.30);
+      /* No filter on the panel itself — a parent filter blurs every descendant
+         including the cards, and you can't undo a parent filter from a child.
+         Filter is applied per non-card child via the rule below so the cards
+         stay crisp. */
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.4s steps(10);
+    }
+    .poker > :not(.pk-cards) {
+      /* No filter blur. iOS Safari renders sub-pixel filter: blur() values
+         unpredictably and can amplify perceived smear. The text-shadow recipe
+         (chromatic + outline + halo) carries the VHS look on its own. */
+      filter: contrast(1.05);
+    }
+    body.poker-on:not(.unlocked) .poker {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    /* Hide the gate while poker is open. */
+    body.poker-on:not(.unlocked) .gate {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .pk-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.55rem;
+      text-align: center;
+    }
+    .pk-title { font-size: clamp(1.05rem, 3.8vw, 1.35rem); }
+    .pk-odds  {
+      font-size: clamp(0.65rem, 2.1vw, 0.85rem);
+      /* Translucent fill, not opacity — opacity would flatten the shadow stack
+         and the chromatic ghosts + outline would dim along with the cream. */
+      color: rgba(255, 245, 196, 0.7);
+      letter-spacing: 0.1em;
+    }
+    .pk-status {
+      min-height: 1.4em;
+      font-size: clamp(0.9rem, 2.8vw, 1.05rem);
+      letter-spacing: 0.1em;
+      text-align: center;
+    }
+    .pk-cards {
+      display: flex;
+      gap: 0.4rem;
+      margin: 0.3rem 0 0.2rem;
+    }
+    /* Cards break the cream-on-blue treatment intentionally — the card faces
+       are warm cream like a real playing card, ranks/suits inked on top. */
+    .pk-card {
+      -webkit-appearance: none;
+      appearance: none;
+      width:  min(56px, 13vw);
+      height: min(80px, 18.5vw);
+      background: rgba(255, 245, 196, 0.94);
+      color: #15116b;                                /* deep blue ink */
+      border: 2px solid rgba(0, 0, 0, 0.5);
+      border-radius: 3px;
+      padding: 0.2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.1rem;
+      font-family: ui-monospace, 'VCR OSD Mono', monospace;
+      cursor: pointer;
+      position: relative;
+      text-shadow: none;
+      /* No blur — match the surrounding text which also has no filter blur.
+         iOS Safari is unreliable with sub-pixel filter values, so keeping
+         everything in the poker panel filter-free avoids inconsistencies. */
+      filter: contrast(1.05);
+      transition: transform 0.1s ease;
+    }
+    .pk-card.red       { color: #c81d2a; }            /* hearts + diamonds */
+    .pk-card.facedown  {
+      background: repeating-linear-gradient(
+        45deg,
+        rgba(30, 16, 190, 0.95) 0 6px,
+        rgba(20, 12, 130, 0.95) 6px 12px
+      );
+      color: rgba(255, 245, 196, 0.35);
+      cursor: default;
+    }
+    .pk-card.held {
+      outline: 3px solid #ffea00;
+      outline-offset: 1px;
+      transform: translateY(-4px);
+    }
+    /* Winner highlight — marks the cards that make up the recognized scoring
+       hand after a draw (e.g. the two jacks in a "jacks or better", both pairs
+       in a two pair). Declared after .held so its outline wins the
+       same-specificity tie when a card is held AND part of the winning hand. */
+    .pk-card.pk-winner {
+      outline: 3px solid #4dff7a;
+      outline-offset: 1px;
+      box-shadow: 0 0 14px rgba(77, 255, 122, 0.6);
+    }
+    /* Deal animation — card slides down into its slot while fading in. JS
+       sets animation-delay per card to stagger the deal. `backwards` fill
+       holds the "from" state during the delay so cards stay invisible until
+       their turn. After the animation, the element falls back to its natural
+       CSS state (translateY(0), or translateY(-4px) when .held overrides). */
+    .pk-card.pk-deal-anim {
+      animation: pk-deal 0.36s ease-out backwards;
+    }
+    @keyframes pk-deal {
+      from { opacity: 0; transform: translateY(-44px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .pk-card-rank { font-size: min(1.05rem, 4.2vw); line-height: 1; }
+    .pk-card-suit { font-size: min(1.7rem, 6.5vw); line-height: 1; }
+    .pk-hold-label {
+      position: absolute;
+      top: -1.25em;
+      font-size: clamp(0.6rem, 2vw, 0.75rem);
+      color: #ffea00;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.22em rgba(255, 240, 180, 0.30);
+      filter: none;
+      letter-spacing: 0.1em;
+    }
+    .pk-footer {
+      display: flex;
+      gap: 1.2rem;
+      font-size: clamp(0.9rem, 2.6vw, 1.1rem);
+    }
+    .pk-btn {
+      -webkit-appearance: none;
+      appearance: none;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: inherit;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #fff5c4;
+      background: transparent;
+      border: none;
+      padding: 0.4rem 0.8rem;
+      cursor: pointer;
+      transition: color 0.2s ease, opacity 0.2s ease;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.22em rgba(255, 240, 180, 0.30);
+    }
+    .pk-btn:hover, .pk-btn:active { color: #ffea00; }
+    .pk-btn[disabled] { opacity: 0.45; cursor: default; }
+
+    /* ---- Odds line + help button row ---- */
+    .pk-odds-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+    }
+    /* ---- Help button — "?" inline next to the unlock-condition line ---- */
+    .pk-info {
+      -webkit-appearance: none;
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.7em;
+      height: 1.7em;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: clamp(0.7rem, 2.2vw, 0.9rem);
+      line-height: 1;
+      letter-spacing: 0;
+      color: #fff5c4;
+      background: rgba(255, 245, 196, 0.08);
+      border: 1.5px solid rgba(255, 245, 196, 0.65);
+      border-radius: 3px;
+      padding: 0;
+      cursor: pointer;
+      flex: 0 0 auto;
+      transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+      text-shadow:
+        min(-0.06em, -1px) 0 0 rgba(255, 50, 70, 0.5),
+        max( 0.06em,  1px) 0 0 rgba(70, 220, 255, 0.4);
+    }
+    .pk-info:hover, .pk-info:active {
+      color: #ffea00;
+      border-color: rgba(255, 234, 0, 0.85);
+      background: rgba(255, 234, 0, 0.12);
+    }
+
+    /* ---- Pay table modal — full-screen overlay above .poker ---- */
+    .pk-paytable {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      background: rgba(0, 0, 0, 0.62);
+      -webkit-backdrop-filter: blur(2px);
+              backdrop-filter: blur(2px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s steps(6);
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      color: #fff5c4;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .pk-paytable.on {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .pk-paytable-inner {
+      max-width: 26rem;
+      width: 100%;
+      background: rgba(10, 6, 90, 0.94);
+      border: 2px solid rgba(255, 245, 196, 0.45);
+      padding: 1.3rem 1.3rem 1.1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.5),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.4),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.9),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.8),
+         0 0 0.22em rgba(255, 240, 180, 0.28);
+    }
+    .pk-paytable-title {
+      font-size: clamp(0.95rem, 3vw, 1.15rem);
+      text-align: center;
+      letter-spacing: 0.18em;
+    }
+    .pk-paytable-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .pk-paytable-list li {
+      display: grid;
+      grid-template-columns: 1.4em 1fr auto;
+      align-items: baseline;
+      gap: 0.55rem;
+      font-size: clamp(0.7rem, 2.2vw, 0.9rem);
+      letter-spacing: 0.08em;
+      color: rgba(255, 245, 196, 0.48);
+    }
+    .pk-paytable-list li.win { color: #fff5c4; }
+    .pk-pt-mark { text-align: center; }
+    .pk-paytable-list li.win .pk-pt-mark { color: #ffea00; }
+    .pk-pt-desc {
+      font-size: clamp(0.55rem, 1.85vw, 0.72rem);
+      color: rgba(255, 245, 196, 0.42);
+      text-transform: none;
+      letter-spacing: 0.04em;
+      text-align: right;
+    }
+    .pk-paytable-list li.win .pk-pt-desc { color: rgba(255, 245, 196, 0.72); }
+
+    /* Instructions list — same two-column grid as the hand list for visual rhythm */
+    .pk-instructions {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .pk-instructions li {
+      display: grid;
+      grid-template-columns: 4.2em 1fr;
+      align-items: baseline;
+      gap: 0.7rem;
+      font-size: clamp(0.7rem, 2.2vw, 0.9rem);
+      letter-spacing: 0.08em;
+      color: #fff5c4;
+    }
+    .pk-step-key {
+      color: #ffea00;
+      letter-spacing: 0.1em;
+    }
+    .pk-step-desc {
+      color: rgba(255, 245, 196, 0.78);
+      text-transform: none;
+      font-size: clamp(0.62rem, 1.95vw, 0.78rem);
+      letter-spacing: 0.04em;
+    }
+    .pk-paytable-divider {
+      font-size: clamp(0.7rem, 2.2vw, 0.88rem);
+      text-align: center;
+      color: rgba(255, 245, 196, 0.65);
+      letter-spacing: 0.18em;
+      padding-top: 0.5rem;
+      margin-top: 0.1rem;
+      border-top: 1px solid rgba(255, 245, 196, 0.25);
+    }
+    .pk-pt-close {
+      -webkit-appearance: none;
+      appearance: none;
+      align-self: center;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: clamp(0.75rem, 2.3vw, 0.92rem);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #fff5c4;
+      background: transparent;
+      border: 1px solid rgba(255, 245, 196, 0.5);
+      border-radius: 2px;
+      padding: 0.32rem 1.05rem;
+      margin-top: 0.2rem;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .pk-pt-close:hover, .pk-pt-close:active {
+      color: #ffea00;
+      border-color: rgba(255, 234, 0, 0.65);
+    }
+
+    /* ---- 2048 panel (third bypass — hard but real) ---- */
+    .tk {
+      position: fixed;
+      inset: 0;
+      z-index: 72;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.7rem;
+      padding: 2rem;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      color: #fff5c4;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.22em rgba(255, 240, 180, 0.30);
+      filter: blur(0.55px) contrast(1.05);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.4s steps(10);
+    }
+    body.tk-on:not(.unlocked) .tk {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    /* Hide gate when 2048 is open. */
+    body.tk-on:not(.unlocked) .gate {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .tk-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      width: min(20rem, 88vw);
+      font-size: clamp(0.95rem, 3vw, 1.2rem);
+    }
+    .tk-status {
+      letter-spacing: 0.1em;
+      min-height: 1.2em;
+      font-size: clamp(0.9rem, 2.8vw, 1.05rem);
+      text-align: center;
+    }
+    .tk-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 4px;
+      touch-action: none;                            /* let the swipe handler own gestures */
+    }
+    .tk-cell {
+      width:  min(58px, 14vw);
+      height: min(58px, 14vw);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 245, 196, 0.08);
+      color: #fff5c4;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: min(1.3rem, 4.6vw);
+      line-height: 1;
+      letter-spacing: 0;                             /* cancel the parent letter-spacing for tight digits */
+      transition: background 0.12s ease, transform 0.12s ease;
+    }
+    /* Per-value colors — climb the DVD palette as the player progresses. */
+    .tk-cell.v-2    { background: rgba(255, 245, 196, 0.20); }
+    .tk-cell.v-4    { background: rgba(255, 245, 196, 0.32); }
+    .tk-cell.v-8    { background: rgba(77, 224, 255, 0.45); }
+    .tk-cell.v-16   { background: rgba(77, 255, 122, 0.50); }
+    .tk-cell.v-32   { background: rgba(255, 153, 51, 0.55); }
+    .tk-cell.v-64   { background: rgba(255, 77, 77, 0.60); }
+    .tk-cell.v-128  { background: rgba(179, 102, 255, 0.62); font-size: min(1.15rem, 4vw); }
+    .tk-cell.v-256  { background: rgba(255, 102, 212, 0.66); font-size: min(1.15rem, 4vw); }
+    .tk-cell.v-512  { background: rgba(255, 234, 0, 0.70);   font-size: min(1.15rem, 4vw); }
+    .tk-cell.v-1024 { background: rgba(255, 245, 196, 0.80); font-size: min(0.95rem, 3.4vw); }
+    .tk-cell.v-2048 {
+      background: rgba(255, 245, 196, 0.95);
+      font-size: min(0.95rem, 3.4vw);
+      box-shadow: 0 0 18px rgba(255, 240, 180, 0.9);
+    }
+    .tk-cell.merged {
+      transform: scale(1.08);
+    }
+    .tk-footer {
+      display: flex;
+      gap: 1.2rem;
+      font-size: clamp(0.9rem, 2.6vw, 1.1rem);
+    }
+    .tk-btn {
+      -webkit-appearance: none;
+      appearance: none;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: inherit;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #fff5c4;
+      background: transparent;
+      border: none;
+      padding: 0.4rem 0.8rem;
+      cursor: pointer;
+      transition: color 0.2s ease;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.22em rgba(255, 240, 180, 0.30);
+    }
+    .tk-btn:hover, .tk-btn:active { color: #ffea00; }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      /* Black like body — gives iOS chrome the cleanest sample of the
+         video content above it. */
+      background: #000;
+    }
+
+    .layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 0.55s ease-out;
+      pointer-events: none;
+    }
+    .layer.active { opacity: 1; }
+    /* Stack so the newer state fades in on top of the previous one as backdrop —
+       no black flash because something is always fully opaque underneath. */
+    #idle-video  { z-index: 1; }
+    #scrub-video { z-index: 2; }
+    #end-video   { z-index: 3; }
+
+    /* Name wordmark — appears on load, fades out once you start scrolling */
+    .brand {
+      position: absolute;
+      top: 34%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: 'LowerResolution', system-ui, sans-serif;
+      font-size: clamp(3.5rem, 14vw, 11rem);
+      line-height: 1;
+      /* VHS treatment — same recipe as .start-btn, offsets scaled up for the
+         much larger font size. Keeps the font itself unchanged. */
+      color: #fff5c4;
+      text-shadow:
+        /* thin uneven black outline */
+         3px  3px 0 rgba(0, 0, 0, 0.95),
+        -3px  3px 0 rgba(0, 0, 0, 0.85),
+         3px -3px 0 rgba(0, 0, 0, 0.78),
+        -3px -3px 0 rgba(0, 0, 0, 0.95),
+         0    4px 0 rgba(0, 0, 0, 0.9),
+         0   -4px 0 rgba(0, 0, 0, 0.75),
+         4px  0   0 rgba(0, 0, 0, 0.7),
+        -4px  0   0 rgba(0, 0, 0, 0.85),
+        /* tape-bleed glow */
+         0 0 22px rgba(255, 240, 180, 0.35);
+      filter: blur(0.8px) contrast(1.05);
+      letter-spacing: 0.01em;
+      pointer-events: none !important;     /* defeat any iOS quirk */
+      touch-action: none;
+      opacity: 0;
+      /* Slow fade-in (matches VHS_FADE_MS so they sync). The fade-OUT is
+         overridden below for non-idle states so the wordmark snaps away
+         when playback starts instead of lingering. */
+      transition: opacity 1.8s ease;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      z-index: 60;        /* above the VHS layer so it can appear on the last frame */
+    }
+    /* Keep all UI overlays above the video stack */
+    .start-btn, .paths { z-index: 10; }
+    .debug { z-index: 9999; }
+    body.brand-ready[data-state="idle"] .brand { opacity: 1; }
+    /* Fast fade-out when leaving idle (e.g., after pressing START). */
+    body[data-state="scrubbing"] .brand,
+    body[data-state="ended"]    .brand { transition: opacity 0.35s ease; }
+
+    /* VCR OSD Mono — same font as the "PLAY" text in the VHS preloader */
+    @font-face {
+      font-family: 'VCR OSD Mono';
+      src: url('../VCR_OSD_MONO.ttf') format('truetype');
+      font-display: swap;
+    }
+
+    /* Start button — sits below the wordmark, only visible during idle.
+       Styled to match the VHS "PLAY" overlay: cream fill, chromatic
+       aberration ghosts, soft edges, uneven black outline. */
+    .start-btn {
+      position: absolute;
+      bottom: 8vh;                                 /* anchored near the bottom */
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: 1.6rem;
+      letter-spacing: 0.01em;
+      text-transform: uppercase;
+      /* No baseline animation — the blink is declared on the visibility rule
+         below so it only runs while the button is supposed to be on screen.
+         Otherwise vhs-blink keeps re-showing the button after press. */
+      color: #fff5c4;                              /* warm cream */
+      text-shadow:
+        /* chromatic aberration — red ghost left, cyan ghost right */
+        -1.8px 0 0 rgba(255, 50, 70, 0.55),
+         1.8px 0 0 rgba(70, 220, 255, 0.45),
+        /* thick uneven black outline — broken on purpose, not a perfect halo */
+         2px  2px 0 rgba(0, 0, 0, 0.95),
+        -2px  2px 0 rgba(0, 0, 0, 0.85),
+         2px -2px 0 rgba(0, 0, 0, 0.78),
+        -2px -2px 0 rgba(0, 0, 0, 0.95),
+         0    3px 0 rgba(0, 0, 0, 0.9),
+         0   -3px 0 rgba(0, 0, 0, 0.75),
+         3px  0   0 rgba(0, 0, 0, 0.7),
+        -3px  0   0 rgba(0, 0, 0, 0.85),
+        /* tape-bleed glow */
+         0 0 0.22em rgba(255, 240, 180, 0.35);
+      filter: blur(0.35px) contrast(1.05);          /* soft analog edges */
+      background: transparent;
+      border: none;
+      padding: 0.4rem 1rem;
+      cursor: pointer;
+      transition: opacity 0.5s ease, color 0.2s ease;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .start-btn:hover { color: #ffea00; }
+    @keyframes vhs-blink {
+      0%   { opacity: 1; }
+      50%  { opacity: 0; }
+      100% { opacity: 1; }
+    }
+    /* Press feedback: smooth 1s fade-out, color shifts to yellow as a subtle
+       "selected" confirmation. !important so it beats the visibility rule's
+       vhs-blink during the brief window where both selectors match. */
+    .start-btn.pressed {
+      animation: vhs-press 1s ease forwards !important;
+      pointer-events: none;
+      color: #ffea00;
+    }
+    @keyframes vhs-press {
+      0%   { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    /* Visible when videos are loaded AND (we're in idle OR paused at a checkpoint).
+       The blink animation is scoped to this rule so it stops when the button
+       isn't supposed to be on screen — otherwise it keeps reviving the button
+       after press, since CSS animations override static opacity values. */
+    body.videos-ready[data-state="idle"] .start-btn,
+    body.paused-at-checkpoint .start-btn {
+      opacity: 1;
+      pointer-events: auto;
+      animation: vhs-blink 2s step-end infinite;
+    }
+    /* Hidden during the VHS sequence even if conditions above are met. */
+    body.vhs-running .start-btn { opacity: 0 !important; pointer-events: none !important; }
+
+    /* ---- VCR main menu (end state) ---- */
+    .menu {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      padding: 2rem;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      color: #fff5c4;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.22em rgba(255, 240, 180, 0.30);
+      filter: blur(0.55px) contrast(1.05);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.4s steps(10);
+    }
+    body[data-state="ended"] .menu {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .menu-header {
+      font-size: clamp(1.2rem, 4.5vw, 1.8rem);
+      margin-bottom: 0.4rem;
+    }
+    .menu-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25em;
+      font-size: clamp(0.95rem, 3.4vw, 1.5rem);
+      max-height: calc(100vh - 9rem);
+      max-height: calc(100dvh - 9rem);
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+    .menu-list::-webkit-scrollbar { display: none; }
+    .menu-item {
+      display: grid;
+      grid-template-columns: 1.4em 2.4em auto;
+      align-items: baseline;
+      column-gap: 0.6em;
+      padding: 0.1em 0.4em;
+      cursor: pointer;
+      transition: color 0.12s ease;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .menu-arrow {
+      opacity: 0;
+      transition: opacity 0.08s steps(2);
+    }
+    .menu-item.selected .menu-arrow { opacity: 1; }
+    .menu-item.selected             { color: #ffea00; }
+    .menu-footer {
+      font-size: clamp(0.7rem, 2.2vw, 0.95rem);
+      margin-top: 1.4rem;
+      opacity: 0.75;
+      letter-spacing: 0.1em;
+      text-align: center;
+    }
+
+    /* ---- Channel-action FX overlays ---- */
+    .fx-static {
+      position: fixed;
+      inset: 0;
+      z-index: 75;
+      background: #000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.1s steps(2);
+    }
+    .fx-static.on { opacity: 1; }
+    .fx-static-frame {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: right center;
+    }
+    .fx-text {
+      position: fixed;
+      inset: 0;
+      z-index: 76;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'VCR OSD Mono', ui-monospace, monospace;
+      font-size: clamp(1.6rem, 6vw, 2.6rem);
+      color: #fff5c4;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.28em rgba(255, 240, 180, 0.35);
+      filter: blur(0.55px) contrast(1.05);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.1s steps(2);
+    }
+    .fx-text.on {
+      opacity: 1;
+      animation: fx-text-shake 0.12s linear infinite;
+    }
+    @keyframes fx-text-shake {
+      0%, 100% { transform: translate(0, 0); }
+      25%      { transform: translate(-2px,  1px); }
+      50%      { transform: translate( 2px, -1px); }
+      75%      { transform: translate(-1px,  2px); }
+    }
+    /* `record` channel — same overlay, red fill instead of cream cream. */
+    .fx-text.red {
+      color: #ff2030;
+      text-shadow:
+        min(-0.07em, -1px)  0                  0 rgba(255, 80, 90, 0.55),
+        max( 0.07em,  1px)  0                  0 rgba(120, 0, 30, 0.65),
+        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
+        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
+        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
+        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
+         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
+         0 0 0.32em rgba(255, 40, 60, 0.55);
+    }
+
+    /* `color bars` channel — SMPTE 7-band vertical pattern. */
+    .fx-colorbars {
+      position: fixed;
+      inset: 0;
+      z-index: 75;
+      background: linear-gradient(
+        to right,
+        #c0c0c0 0% 14.285%,
+        #c0c000 14.285% 28.57%,
+        #00c0c0 28.57% 42.857%,
+        #00c000 42.857% 57.143%,
+        #c000c0 57.143% 71.428%,
+        #c00000 71.428% 85.714%,
+        #0000c0 85.714% 100%
+      );
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.1s steps(2);
+    }
+    .fx-colorbars.on { opacity: 1; }
+
+    /* `dead air` channel — pure black hold, slightly slower fade than the others
+       so the snap-back is part of the joke. */
+    .fx-deadair {
+      position: fixed;
+      inset: 0;
+      z-index: 77;
+      background: #000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s steps(2);
+    }
+    .fx-deadair.on { opacity: 1; }
+
+    /* `power off` channel — CRT collapse: a full-screen black backdrop reveals,
+       then a horizontal white line collapses to nothing in the middle, mimicking
+       an old tube TV losing signal. Both halves animate via class toggles. */
+    .fx-poweroff {
+      position: fixed;
+      inset: 0;
+      z-index: 78;
+      background: #000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.05s linear;
+      overflow: hidden;
+    }
+    .fx-poweroff.on { opacity: 1; }
+    .fx-poweroff-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      height: 2px;
+      transform: translateY(-50%) scaleX(0);
+      background: #fff;
+      box-shadow:
+        0 0 0.4em rgba(255, 255, 255, 0.9),
+        0 0 1.2em rgba(255, 255, 255, 0.6);
+    }
+    .fx-poweroff.collapse .fx-poweroff-line {
+      animation: fx-poweroff-collapse 0.7s steps(20) forwards;
+    }
+    @keyframes fx-poweroff-collapse {
+      /* 0% = full-width bright line (just appeared)
+         60% = still wide, holding bright
+         100% = scaled to a single bright pixel, then fades */
+      0%   { transform: translateY(-50%) scaleX(1);    opacity: 1; }
+      55%  { transform: translateY(-50%) scaleX(1);    opacity: 1; }
+      100% { transform: translateY(-50%) scaleX(0.02); opacity: 0.85; }
+    }
+
+    /* VHS intro overlay — covers everything until it cycles, holds, and fades. */
+    .vhs-intro {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      /* Black like body/stage — frames cover this fully, so the bg only
+         shows during the brief load window. */
+      background: #000;
+      pointer-events: none;
+      opacity: 1;
+      /* Chunky 10-step fade-out — matches the stepped transitions used on the
+         live site's gate/preloader/menu, so the handoff from blue VHS frame to
+         the main scene chops down in 10% increments instead of smooth-easing. */
+      transition: opacity 1.8s steps(10);
+    }
+    .vhs-intro.fading { opacity: 0; }
+    /* All 6 frames are stacked in the same spot. Only .active is visible.
+       Pre-stacking lets iOS decode each frame once on initial load — swapping
+       which is visible is then pure CSS, no decode hit per swap. */
+    .vhs-intro img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: right center;   /* anchor the right side (where the play text lives) */
+      display: block;
+      visibility: hidden;
+    }
+    .vhs-intro img.active { visibility: visible; }
+    /* (Start button visibility rules live with .start-btn above.) */
+
+    /* Debug overlay — only visible when URL has ?debug=1 */
+    .debug {
+      position: fixed;
+      top: env(safe-area-inset-top, 0.5rem);
+      left: 0.5rem;
+      right: 0.5rem;
+      max-width: 28rem;
+      background: rgba(0,0,0,0.78);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 0.4rem;
+      padding: 0.6rem 0.8rem;
+      font: 12px ui-monospace, monospace;
+      line-height: 1.45;
+      color: #cde9ff;
+      z-index: 9999;
+      pointer-events: none;
+      backdrop-filter: blur(6px);
+    }
+    .debug b { color: #ffd270; font-weight: 400; }
+    body:not(.debug-on) .debug { display: none; }

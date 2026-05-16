@@ -1,450 +1,21 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <!-- No theme-color — leaving it off lets iOS Safari's translucent URL bar
+       and status bar dynamically blur the underlying content, so the chrome
+       always blends with whatever scene is on screen. -->
   <title>quentin.</title>
-  <link rel="icon" href="data:,">
-
-  <!-- Color the iOS Safari URL bar (and Android Chrome top bar) to match the
-       VHS blue. (#1e10be was sampled from the actual VHS frame.) -->
-  <meta name="theme-color" content="#1e10be">
-  <style>
-    @font-face {
-      font-family: 'LowerResolution';
-      src: url('LowerResolution-period.ttf') format('truetype');
-      font-display: swap;
-    }
-    @font-face {
-      font-family: 'VCR OSD Mono';
-      src: url('VCR_OSD_MONO.ttf') format('truetype');
-      font-display: swap;
-    }
-
-    /* ---- Pre-password preloader ---- */
-    /* The whole preloader layer is the click target — tap anywhere to advance
-       to the password gate. No visible UI; the bouncing wordmark + cursor
-       carry the affordance. */
-    .preloader {
-      position: fixed;
-      inset: 0;
-      z-index: 65;                                 /* above wordmark (60), below gate (70) */
-      pointer-events: auto;
-      cursor: pointer;
-      /* Chunky stepped fade — opacity drops in 10% jumps over 1.4s instead of
-         interpolating smoothly. Feels chopped/digital, not analog crossfade. */
-      transition: opacity 1.4s steps(10);
-    }
-    body.preloader-passed .preloader,
-    body.unlocked .preloader { opacity: 0; pointer-events: none; }
-
-    /* ---- Password gate ---- */
-    .gate {
-      position: fixed;
-      inset: 0;
-      z-index: 70;                                 /* above .vhs (50) and .brand (60) */
-      /* No background — frame_04 stays visible underneath through the whole
-         gate phase, so there's no color-step shift when the gate fades in. */
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 1.4rem;
-      padding: 2rem;
-      /* Stepped fade — opacity steps up 10% at a time over 1.4s. Matches
-         the preloader's chopped/digital feel. */
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 1.4s steps(10);
-    }
-    body.preloader-passed:not(.unlocked) .gate {
-      opacity: 1;
-      pointer-events: auto;
-    }
-    .gate-prompt,
-    .gate-input,
-    .gate-input-prefix,
-    .gate-error {
-      font-family: 'VCR OSD Mono', ui-monospace, monospace;
-      color: #fff5c4;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      text-shadow:
-         2px  2px 0 rgba(0, 0, 0, 0.95),
-        -2px  2px 0 rgba(0, 0, 0, 0.85),
-         2px -2px 0 rgba(0, 0, 0, 0.78),
-        -2px -2px 0 rgba(0, 0, 0, 0.95),
-         0    3px 0 rgba(0, 0, 0, 0.7),
-         0 0 8px rgba(255, 240, 180, 0.30);
-    }
-    .gate-prompt {
-      font-size: clamp(1.4rem, 5.5vw, 2.4rem);
-    }
-    .gate-input-wrap {
-      display: flex;
-      align-items: center;
-      font-size: clamp(1.4rem, 5.5vw, 2.4rem);
-    }
-    .gate-input-prefix {
-      margin-right: 0.4em;
-    }
-    .gate-input {
-      -webkit-appearance: none;
-      appearance: none;
-      background: transparent;
-      border: none;
-      outline: none;
-      font-size: inherit;                          /* match input-wrap's clamp size */
-      /* font-family, letter-spacing, text-transform, and color come from the
-         shared rule above — don't override them with `inherit` or the
-         input ends up in system-ui at default spacing. */
-      width: 0;                                    /* JS sizes this to the typed text */
-      min-width: 0;
-      max-width: 60vw;
-      caret-color: transparent;                    /* we draw our own block cursor */
-      padding: 0;
-      margin: 0;
-      text-indent: 0;
-      text-align: left;
-    }
-    /* Hidden span we measure to compute the input's exact text width.
-       Inherits all .gate-input typography so its measured width matches
-       what the input actually renders (including text-transform). The
-       width/max-width overrides cancel the input's `width: 0` so the
-       measure span can actually grow to fit its text. */
-    .gate-measure {
-      position: absolute;
-      visibility: hidden;
-      white-space: pre;
-      pointer-events: none;
-      width: auto !important;
-      max-width: none !important;
-    }
-    /* Rendered as a text glyph (▌) instead of a styled box so the warm
-       text-shadow glow tints the inside of the block the same way it tints
-       the inside of the surrounding text strokes. A solid background block
-       can't get that interior tint (box-shadow only renders outside). */
-    .gate-cursor {
-      display: inline-block;
-      margin-left: 0.05em;
-      font-family: 'VCR OSD Mono', ui-monospace, monospace;
-      color: #fff5c4;
-      text-shadow:
-         2px  2px 0 rgba(0, 0, 0, 0.95),
-        -2px  2px 0 rgba(0, 0, 0, 0.85),
-         2px -2px 0 rgba(0, 0, 0, 0.78),
-        -2px -2px 0 rgba(0, 0, 0, 0.95),
-         0    3px 0 rgba(0, 0, 0, 0.7),
-         0 0 8px rgba(255, 240, 180, 0.30);
-      animation: gate-cursor-blink 1s steps(1) infinite;
-    }
-    .gate-cursor::before { content: "▌"; }
-    @keyframes gate-cursor-blink {
-      50% { opacity: 0; }
-    }
-    .gate-error {
-      font-size: clamp(1.4rem, 5.5vw, 2.4rem);
-      color: #ff6b6b;
-      height: 1.2em;
-      opacity: 0;
-      transition: opacity 0.15s ease;
-    }
-    .gate-error.visible { opacity: 1; }
-    .gate-submit {
-      -webkit-appearance: none;
-      appearance: none;
-      font-family: 'VCR OSD Mono', ui-monospace, monospace;
-      font-size: clamp(1.4rem, 5.5vw, 2.4rem);
-      letter-spacing: 0;                            /* tight, matches PLAY/ENTER */
-      text-transform: uppercase;
-      color: #fff5c4;
-      background: transparent;
-      border: none;                                 /* no box */
-      padding: 0.4rem 0.8rem;                       /* slim tap padding, no border to wrap */
-      cursor: pointer;
-      transition: color 0.2s ease;
-      text-shadow:
-         2px  2px 0 rgba(0, 0, 0, 0.95),
-        -2px  2px 0 rgba(0, 0, 0, 0.85),
-         2px -2px 0 rgba(0, 0, 0, 0.78),
-        -2px -2px 0 rgba(0, 0, 0, 0.95),
-         0    3px 0 rgba(0, 0, 0, 0.7),
-         0 0 10px rgba(255, 240, 180, 0.30);
-    }
-    .gate-submit:hover,
-    .gate-submit:active {
-      color: #ffea00;
-    }
-    .gate-prompt,
-    .gate-input,
-    .gate-input-prefix,
-    .gate-cursor,
-    .gate-error,
-    .gate-submit {
-      filter: blur(0.55px) contrast(1.05);
-    }
-    .gate.shaking {
-      animation: gate-shake 0.45s cubic-bezier(.36,.07,.19,.97);
-    }
-
-    /* ---- Corner buttons (mute toggle + back button) ---- */
-    .mute-toggle,
-    .back-btn {
-      -webkit-appearance: none;
-      appearance: none;
-      position: fixed;
-      bottom: 1rem;
-      z-index: 80;                                 /* above gate, preloader, vhs */
-      font-family: 'VCR OSD Mono', ui-monospace, monospace;
-      font-size: clamp(0.85rem, 2.5vw, 1.1rem);
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: #fff5c4;
-      background: transparent;
-      border: none;
-      padding: 0.4rem 0.6rem;
-      cursor: pointer;
-      text-shadow:
-         2px  2px 0 rgba(0, 0, 0, 0.95),
-        -2px  2px 0 rgba(0, 0, 0, 0.85),
-         2px -2px 0 rgba(0, 0, 0, 0.78),
-        -2px -2px 0 rgba(0, 0, 0, 0.95),
-         0    3px 0 rgba(0, 0, 0, 0.7),
-         0 0 8px rgba(255, 240, 180, 0.30);
-      filter: blur(0.55px) contrast(1.05);
-      transition: color 0.2s ease;
-    }
-    .mute-toggle { right: 1rem; }
-    .back-btn    { left:  1rem; }
-    /* Both corner buttons are hidden on the preloader: there's nothing to go
-       back to from the first screen, and audio only starts on the ENTER tap
-       so a "sound: on" indicator before any sound is playing is just noise.
-       Fade both in together once the user advances past the preloader. */
-    .back-btn,
-    .mute-toggle {
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 1.4s steps(10);
-    }
-    body.preloader-passed .back-btn,
-    body.preloader-passed .mute-toggle {
-      opacity: 1;
-      pointer-events: auto;
-    }
-    .mute-toggle:hover, .mute-toggle:active,
-    .back-btn:hover,    .back-btn:active {
-      color: #ffea00;
-    }
-    @keyframes gate-shake {
-      10%, 90%  { transform: translateX(-2px); }
-      20%, 80%  { transform: translateX( 4px); }
-      30%, 50%, 70% { transform: translateX(-8px); }
-      40%, 60%  { transform: translateX( 8px); }
-    }
-
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      height: 100%;
-      width: 100%;
-      background: #000;
-      color: #fff;
-      overflow: hidden;
-      overscroll-behavior: none;
-      touch-action: none;
-    }
-    body {
-      font-family: system-ui, sans-serif;
-    }
-
-    /* Wordmark — fades in once the VHS frames are ready. Same styling
-       recipe as the main site: cream fill, thin uneven outline, glow, blur. */
-    .brand {
-      position: absolute;
-      top: 0;
-      left: 0;
-      /* JS drives this transform every frame for the DVD-bounce.
-         will-change tells the browser to put it on its own layer. */
-      transform: translate3d(0, 0, 0);
-      will-change: transform;
-      font-family: 'LowerResolution', system-ui, sans-serif;
-      font-size: clamp(3.5rem, 14vw, 11rem);
-      line-height: 1;
-      color: #fff5c4;
-      text-shadow:
-         3px  3px 0 rgba(0, 0, 0, 0.95),
-        -3px  3px 0 rgba(0, 0, 0, 0.85),
-         3px -3px 0 rgba(0, 0, 0, 0.78),
-        -3px -3px 0 rgba(0, 0, 0, 0.95),
-         0    4px 0 rgba(0, 0, 0, 0.9),
-         0   -4px 0 rgba(0, 0, 0, 0.75),
-         4px  0   0 rgba(0, 0, 0, 0.7),
-        -4px  0   0 rgba(0, 0, 0, 0.85),
-         0 0 22px rgba(255, 240, 180, 0.35);
-      filter: blur(0.55px) contrast(1.05);
-      letter-spacing: 0.01em;
-      pointer-events: none;
-      user-select: none;
-      -webkit-user-select: none;
-      opacity: 0;
-      /* Stepped fade-in — opacity climbs 10% at a time over 1.4s, same chunky
-         feel as the preloader→gate transition. */
-      transition: opacity 1.4s steps(10);
-      z-index: 60;
-    }
-    body.brand-ready .brand { opacity: 1; }
-
-    /* VHS layer — stays visible forever (no videos to reveal underneath). */
-    .vhs {
-      position: fixed;
-      inset: 0;
-      z-index: 50;
-      background: #000;
-      pointer-events: none;
-    }
-    .vhs img {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      object-position: right center;
-      display: block;
-      visibility: hidden;
-    }
-    .vhs img.active { visibility: visible; }
-
-    /* ---- VCR main menu (post-unlock) ---- */
-    .menu {
-      position: fixed;
-      inset: 0;
-      z-index: 60;                                 /* above .vhs (50), below corner btns (80) */
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 1rem;
-      padding: 2rem;
-      font-family: 'VCR OSD Mono', ui-monospace, monospace;
-      color: #fff5c4;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      text-shadow:
-         2px  2px 0 rgba(0, 0, 0, 0.95),
-        -2px  2px 0 rgba(0, 0, 0, 0.85),
-         2px -2px 0 rgba(0, 0, 0, 0.78),
-        -2px -2px 0 rgba(0, 0, 0, 0.95),
-         0    3px 0 rgba(0, 0, 0, 0.7),
-         0 0 8px rgba(255, 240, 180, 0.30);
-      filter: blur(0.55px) contrast(1.05);
-      opacity: 0;
-      pointer-events: none;
-      /* Stepped fade matches the gate / preloader transitions. */
-      transition: opacity 1.4s steps(10);
-    }
-    body.unlocked .menu {
-      opacity: 1;
-      pointer-events: auto;
-    }
-    .menu-header {
-      font-size: clamp(1.2rem, 4.5vw, 1.8rem);
-      margin-bottom: 0.4rem;
-    }
-    .menu-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.4em;
-      font-size: clamp(1.1rem, 4vw, 1.6rem);
-    }
-    .menu-item {
-      display: grid;
-      grid-template-columns: 1.4em 2.4em auto;
-      align-items: baseline;
-      column-gap: 0.6em;
-      padding: 0.1em 0.4em;
-      cursor: pointer;
-      transition: color 0.12s ease;
-      user-select: none;
-      -webkit-user-select: none;
-    }
-    /* Only the selected row's arrow is visible — drives the ▶ "cursor". */
-    .menu-arrow {
-      opacity: 0;
-      transition: opacity 0.08s steps(2);
-    }
-    .menu-item.selected .menu-arrow { opacity: 1; }
-    .menu-item.selected             { color: #ffea00; }
-    .menu-footer {
-      font-size: clamp(0.7rem, 2.2vw, 0.95rem);
-      margin-top: 1.4rem;
-      opacity: 0.75;
-      letter-spacing: 0.1em;
-      text-align: center;
-    }
-
-    /* Once unlocked, fade the bouncing wordmark out so the menu sits on a
-       clean backdrop. Bounce keeps running invisibly — cheap, harmless. */
-    body.brand-ready.unlocked .brand { opacity: 0; }
-
-    /* ---- Channel-action FX overlays ---- */
-    /* Full-screen visible "static" used by the STATIC channel. */
-    .fx-static {
-      position: fixed;
-      inset: 0;
-      z-index: 75;                                 /* above menu, below corner btns */
-      background: #000;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.1s steps(2);
-    }
-    .fx-static.on { opacity: 1; }
-    .fx-static-frame {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      object-position: right center;
-    }
-
-    /* Centered VCR text overlay — used for "TRACKING ERROR" and "NO SIGNAL". */
-    .fx-text {
-      position: fixed;
-      inset: 0;
-      z-index: 76;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: 'VCR OSD Mono', ui-monospace, monospace;
-      font-size: clamp(1.6rem, 6vw, 2.6rem);
-      color: #fff5c4;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      text-shadow:
-         2px  2px 0 rgba(0, 0, 0, 0.95),
-        -2px  2px 0 rgba(0, 0, 0, 0.85),
-         2px -2px 0 rgba(0, 0, 0, 0.78),
-        -2px -2px 0 rgba(0, 0, 0, 0.95),
-         0    3px 0 rgba(0, 0, 0, 0.7),
-         0 0 10px rgba(255, 240, 180, 0.35);
-      filter: blur(0.55px) contrast(1.05);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.1s steps(2);
-    }
-    .fx-text.on {
-      opacity: 1;
-      animation: fx-text-shake 0.12s linear infinite;
-    }
-    @keyframes fx-text-shake {
-      0%, 100% { transform: translate(0, 0); }
-      25%      { transform: translate(-2px,  1px); }
-      50%      { transform: translate( 2px, -1px); }
-      75%      { transform: translate(-1px,  2px); }
-    }
-  </style>
+  <link rel="stylesheet" href="styles/scroll-scrub.css">
 </head>
-<body>
+<body data-state="idle" class="vhs-running">
+
+  <!-- Bouncing wordmark — preloader-phase only. The static `.brand` inside
+       .stage is the post-unlock idle wordmark; this one is the DVD-bounce. -->
+  <div class="brand-bounce">quentin.</div>
+
+  <!-- Password gate. Fades in on preloader-passed, fades out on unlocked. -->
   <form class="gate" id="gate" autocomplete="off" novalidate>
     <div class="gate-prompt">enter password</div>
     <div class="gate-input-wrap">
@@ -464,530 +35,212 @@
     </div>
     <div class="gate-error" id="gate-error">access denied</div>
     <button type="submit" class="gate-submit">enter</button>
+    <button type="button" class="gate-try-another cycle-btn">try another way</button>
   </form>
 
-  <div class="brand">quentin.</div>
-  <div class="vhs" id="vhs">
-    <picture>
-      <source srcset="vhs_frames_hd/frame_01.png" media="(pointer: fine)">
-      <img class="vhs-frame" data-i="0" alt="" src="vhs_frames/frame_01.jpg">
-    </picture>
-    <picture>
-      <source srcset="vhs_frames_hd/frame_02.png" media="(pointer: fine)">
-      <img class="vhs-frame" data-i="1" alt="" src="vhs_frames/frame_02.jpg">
-    </picture>
-    <picture>
-      <source srcset="vhs_frames_hd/frame_03.png" media="(pointer: fine)">
-      <img class="vhs-frame" data-i="2" alt="" src="vhs_frames/frame_03.jpg">
-    </picture>
-    <picture>
-      <source srcset="vhs_frames_hd/frame_04.png" media="(pointer: fine)">
-      <img class="vhs-frame active" data-i="3" alt="" src="vhs_frames/frame_04.jpg" fetchpriority="high">
-    </picture>
+  <!-- Minesweeper bypass — clicking "try another way" on the gate opens this
+       panel. Clearing the board unlocks the site (same path as the password). -->
+  <div class="minesweeper" id="minesweeper" aria-label="Minesweeper bypass">
+    <div class="ms-header">
+      <span id="ms-mines-left">12</span>
+      <span class="ms-timer" id="ms-timer">2:00</span>
+      <span class="ms-status" id="ms-status">clear the board</span>
+    </div>
+    <div class="ms-grid" id="ms-grid"></div>
+    <div class="ms-footer">
+      <button type="button" class="ms-btn" id="ms-retry">retry</button>
+    </div>
+    <div class="ms-hint">right-click or long-press to flag</div>
+    <button type="button" class="gate-try-another cycle-btn">try another way</button>
   </div>
 
-  <!-- Pre-password preloader — frame_04 background (already showing via .vhs)
-       + bouncing wordmark. The whole layer is clickable: tap anywhere to
-       advance to the password gate. -->
+  <!-- Video poker bypass — open via the gate's "or another way" button. Real
+       5-card draw mechanics; royal flush is the only unlock. Joke = the odds. -->
+  <div class="poker" id="poker" aria-label="Video poker bypass">
+    <div class="pk-header">
+      <div class="pk-title">video poker</div>
+      <div class="pk-odds-row">
+        <div class="pk-odds">land four of a kind or better to unlock</div>
+        <button type="button" class="pk-info" id="pk-info-btn" aria-label="How to play and pay table" aria-haspopup="dialog" aria-controls="pk-paytable">?</button>
+      </div>
+    </div>
+    <div class="pk-status" id="pk-status">deal to begin</div>
+    <div class="pk-cards" id="pk-cards"></div>
+    <div class="pk-footer">
+      <button type="button" class="pk-btn" id="pk-action">deal</button>
+    </div>
+    <div class="ms-hint">tap a card to hold · hand <span id="pk-count">0</span></div>
+    <button type="button" class="gate-try-another cycle-btn">try another way</button>
+  </div>
+
+  <!-- Video poker pay table modal — sibling of .poker so its z-index isn't
+       trapped in the poker stacking context. Hand names match the labels
+       returned by pkRank() in the JS. Winning hands (royal flush, straight
+       flush, four of a kind) have class="win". -->
+  <div class="pk-paytable" id="pk-paytable" role="dialog" aria-modal="true" aria-labelledby="pk-paytable-title" aria-hidden="true">
+    <div class="pk-paytable-inner">
+      <div class="pk-paytable-title" id="pk-paytable-title">how to play</div>
+      <ul class="pk-instructions">
+        <li><span class="pk-step-key">deal</span><span class="pk-step-desc">get 5 cards</span></li>
+        <li><span class="pk-step-key">tap</span><span class="pk-step-desc">hold the cards you want</span></li>
+        <li><span class="pk-step-key">draw</span><span class="pk-step-desc">replace the rest</span></li>
+        <li><span class="pk-step-key">★</span><span class="pk-step-desc">match a starred hand to unlock</span></li>
+      </ul>
+      <div class="pk-paytable-divider">— pay table —</div>
+      <ul class="pk-paytable-list">
+        <li class="win"><span class="pk-pt-mark">★</span><span class="pk-pt-name">royal flush</span><span class="pk-pt-desc">10 J Q K A · same suit</span></li>
+        <li class="win"><span class="pk-pt-mark">★</span><span class="pk-pt-name">straight flush</span><span class="pk-pt-desc">5 in a row · same suit</span></li>
+        <li class="win"><span class="pk-pt-mark">★</span><span class="pk-pt-name">four of a kind</span><span class="pk-pt-desc">4 cards · same rank</span></li>
+        <li><span class="pk-pt-mark">·</span><span class="pk-pt-name">full house</span><span class="pk-pt-desc">3 + 2 of a kind</span></li>
+        <li><span class="pk-pt-mark">·</span><span class="pk-pt-name">flush</span><span class="pk-pt-desc">5 cards · same suit</span></li>
+        <li><span class="pk-pt-mark">·</span><span class="pk-pt-name">straight</span><span class="pk-pt-desc">5 cards · in a row</span></li>
+        <li><span class="pk-pt-mark">·</span><span class="pk-pt-name">three of a kind</span><span class="pk-pt-desc">3 cards · same rank</span></li>
+        <li><span class="pk-pt-mark">·</span><span class="pk-pt-name">two pair</span><span class="pk-pt-desc">two pairs</span></li>
+        <li><span class="pk-pt-mark">·</span><span class="pk-pt-name">jacks or better</span><span class="pk-pt-desc">pair of J / Q / K / A</span></li>
+      </ul>
+      <button type="button" class="pk-pt-close" id="pk-pt-close">close</button>
+    </div>
+  </div>
+
+  <!-- 2048 bypass — slide tiles to merge them. Reach the 2048 tile to unlock.
+       Hard but real: an experienced player can clear it in ~10-30 minutes. -->
+  <div class="tk" id="tk" aria-label="2048 bypass">
+    <div class="tk-header">
+      <span>2048</span>
+      <span>score <span id="tk-score">0</span></span>
+    </div>
+    <div class="tk-status" id="tk-status">reach 2048 to unlock</div>
+    <div class="tk-grid" id="tk-grid"></div>
+    <div class="tk-footer">
+      <button type="button" class="tk-btn" id="tk-new">new game</button>
+    </div>
+    <div class="ms-hint">arrow keys · wasd · swipe</div>
+    <button type="button" class="gate-try-another cycle-btn">try another way</button>
+  </div>
+
+  <!-- Pre-password preloader — frame_04 backdrop comes from .vhs-intro below.
+       This is just a full-screen click target. Tap anywhere to advance. -->
   <div class="preloader" id="preloader"></div>
 
   <!-- Background-audio mute toggle. Sits above every other layer so it stays
-       reachable through the preloader, gate, and unlocked states. -->
+       reachable through gate, idle, scrubbing, ended states. -->
   <button type="button" class="mute-toggle" id="mute-toggle" aria-label="Toggle sound">sound: on</button>
 
-  <!-- Back button — bottom-left mirror of the mute toggle. history.back()
-       returns to whatever page linked here. -->
+  <!-- Back button — bottom-left mirror of the mute toggle. In-page back:
+       resets state and returns to the preloader. -->
   <button type="button" class="back-btn" id="back-btn" aria-label="Go back">&lt; back</button>
 
-  <!-- VCR-style main menu — visible only in the unlocked state. ↑↓/click to
-       move the selector; Enter/click to fire the channel's action. -->
-  <div class="menu" id="menu" role="menu" aria-label="Main menu">
-    <div class="menu-header">─ main menu ─</div>
-    <div class="menu-list" id="menu-list">
-      <div class="menu-item selected" data-i="0" data-action="open" data-url="#" role="menuitem" tabindex="-1">
-        <span class="menu-arrow">▶</span><span class="menu-num">01</span><span class="menu-label">pray i die</span>
+  <div class="stage">
+    <!-- Three layered videos: idle (autoplay loop), scrub (driven by input), end (plays once) -->
+    <!-- idle plays immediately via the URL src (iOS lets autoplay+muted videos load).
+         scrub & end are loaded via fetch->Blob in JS to bypass iOS's quirky multi-video
+         loading rules — see the preloadAsBlob() block in the script. -->
+    <!-- src is set in JS so desktop (pointer:fine) gets videos_hd/ originals
+         and mobile gets the smaller re-encoded files in the project root. -->
+    <video id="idle-video"  class="layer" muted loop autoplay playsinline preload="auto"></video>
+    <video id="scrub-video" class="layer" muted          playsinline></video>
+    <video id="end-video"   class="layer" muted loop     playsinline></video>
+
+    <div class="brand">quentin.</div>
+    <button class="start-btn" id="start-btn" type="button">start</button>
+
+    <!-- VCR-style main menu — visible only in the ended state. ↑↓/click to
+         move the selector; Enter/click to fire the channel's action. -->
+    <div class="menu" id="menu" role="menu" aria-label="Main menu">
+      <div class="menu-header">─ main menu ─</div>
+      <div class="menu-list" id="menu-list">
+        <div class="menu-item selected" data-i="0" data-action="open" data-url="#" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">01</span><span class="menu-label">pray i die</span>
+        </div>
+        <div class="menu-item" data-i="1" data-action="open" data-url="#" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">02</span><span class="menu-label">ai media co</span>
+        </div>
+        <div class="menu-item" data-i="2" data-action="open" data-url="#" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">03</span><span class="menu-label">instagram</span>
+        </div>
+        <div class="menu-item" data-i="3" data-action="open" data-url="#" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">04</span><span class="menu-label">music</span>
+        </div>
+        <div class="menu-item" data-i="4" data-action="open" data-url="#" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">05</span><span class="menu-label">shop</span>
+        </div>
+        <div class="menu-item" data-i="5" data-action="static" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">06</span><span class="menu-label">static</span>
+        </div>
+        <div class="menu-item" data-i="6" data-action="tracking" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">07</span><span class="menu-label">???</span>
+        </div>
+        <div class="menu-item" data-i="7" data-action="colorbars" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">08</span><span class="menu-label">color bars</span>
+        </div>
+        <div class="menu-item" data-i="8" data-action="text" data-text="rew ◀◀" data-ms="1400" data-tone="rewind" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">09</span><span class="menu-label">rewind</span>
+        </div>
+        <div class="menu-item" data-i="9" data-action="text" data-text="ff ▶▶" data-ms="1400" data-tone="ffwd" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">10</span><span class="menu-label">fast fwd</span>
+        </div>
+        <div class="menu-item" data-i="10" data-action="text" data-text="▮▮ pause" data-ms="1600" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">11</span><span class="menu-label">pause</span>
+        </div>
+        <div class="menu-item" data-i="11" data-action="text" data-text="● rec" data-ms="1800" data-color="red" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">12</span><span class="menu-label">record</span>
+        </div>
+        <div class="menu-item" data-i="12" data-action="deadair" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">13</span><span class="menu-label">dead air</span>
+        </div>
+        <div class="menu-item" data-i="13" data-action="poweroff" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">14</span><span class="menu-label">power off</span>
+        </div>
+        <div class="menu-item" data-i="14" data-action="text" data-text="be kind. rewind." data-ms="1600" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">15</span><span class="menu-label">be kind rewind</span>
+        </div>
       </div>
-      <div class="menu-item" data-i="1" data-action="open" data-url="#" role="menuitem" tabindex="-1">
-        <span class="menu-arrow">▶</span><span class="menu-num">02</span><span class="menu-label">ai media co</span>
-      </div>
-      <div class="menu-item" data-i="2" data-action="open" data-url="#" role="menuitem" tabindex="-1">
-        <span class="menu-arrow">▶</span><span class="menu-num">03</span><span class="menu-label">instagram</span>
-      </div>
-      <div class="menu-item" data-i="3" data-action="static" role="menuitem" tabindex="-1">
-        <span class="menu-arrow">▶</span><span class="menu-num">04</span><span class="menu-label">static</span>
-      </div>
-      <div class="menu-item" data-i="4" data-action="tracking" role="menuitem" tabindex="-1">
-        <span class="menu-arrow">▶</span><span class="menu-num">05</span><span class="menu-label">???</span>
-      </div>
+      <div class="menu-footer">▲▼ navigate &nbsp;&nbsp; enter select</div>
     </div>
-    <div class="menu-footer">▲▼ navigate &nbsp;&nbsp; enter select</div>
+
+    <!-- FX overlays for channel actions. -->
+    <div class="fx-static" id="fx-static" aria-hidden="true">
+      <img class="fx-static-frame" alt="" src="vhs_frames/frame_01.jpg">
+    </div>
+    <div class="fx-text" id="fx-text" aria-hidden="true">tracking error</div>
+    <div class="fx-colorbars" id="fx-colorbars" aria-hidden="true"></div>
+    <div class="fx-deadair" id="fx-deadair" aria-hidden="true"></div>
+    <div class="fx-poweroff" id="fx-poweroff" aria-hidden="true">
+      <div class="fx-poweroff-line"></div>
+    </div>
+
+    <!-- VHS intro: cycles through static frames, lands on last, holds, fades out.
+         All 4 frames sit pre-decoded in the DOM; JS just toggles which has the
+         .active class. iOS Safari decodes each <img> once on load; swaps after
+         that are pure CSS, no decode lag per frame.
+         <picture> serves the high-res PNG to desktop (pointer:fine), and the
+         compressed mobile JPG to phones — no JS needed for the swap. -->
+    <!-- frame_04 (plain blue) is .active from the start — the preloader sits
+         on it as a backdrop. The old flicker sequence (frame_01→03 cycle then
+         04↔03 toggle) is gone; the preloader+gate IS the new intro. -->
+    <div class="vhs-intro" id="vhs-intro">
+      <picture>
+        <source srcset="vhs_frames_hd/frame_01.png" media="(pointer: fine)">
+        <img class="vhs-frame" data-i="0" alt="" src="vhs_frames/frame_01.jpg">
+      </picture>
+      <picture>
+        <source srcset="vhs_frames_hd/frame_02.png" media="(pointer: fine)">
+        <img class="vhs-frame" data-i="1" alt="" src="vhs_frames/frame_02.jpg">
+      </picture>
+      <picture>
+        <source srcset="vhs_frames_hd/frame_03.png" media="(pointer: fine)">
+        <img class="vhs-frame" data-i="2" alt="" src="vhs_frames/frame_03.jpg">
+      </picture>
+      <picture>
+        <source srcset="vhs_frames_hd/frame_04.png" media="(pointer: fine)">
+        <img class="vhs-frame active" data-i="3" alt="" src="vhs_frames/frame_04.jpg" fetchpriority="high">
+      </picture>
+    </div>
+
+    <div class="debug" id="debug"></div>
   </div>
 
-  <!-- FX overlays for channel actions. -->
-  <div class="fx-static" id="fx-static" aria-hidden="true">
-    <img class="fx-static-frame" alt="" src="vhs_frames/frame_01.jpg">
-  </div>
-  <div class="fx-text" id="fx-text" aria-hidden="true">tracking error</div>
+  <script src="scripts/scroll-scrub.js"></script>
 
-  <script>
-    // ---- VHS preloader sequence ----
-    // Initial flicker: frame_01 -> _02 -> _03, then alternate _04 <-> _03 forever.
-    // Frame _03 has the "PLAY" overlay; _04 is plain blue. The toggle simulates
-    // the PLAY indicator blinking on a paused VHS deck.
-    const FLICKER_MS         = 130;    // ms per frame in the initial cycle
-    const BRAND_HOLD_MS      = 1100;   // hold on frame_03 so wordmark can land
-    const TOGGLE_MS          = 1000;   // ms per swap during the 4 <-> 3 loop
-    const INITIAL_LAST_INDEX = 2;      // last index of initial cycle (frame_03)
-    const TOGGLE_A           = 3;      // frame_04
-    const TOGGLE_B           = 2;      // frame_03
-
-    const vhsLayer  = document.getElementById('vhs');
-    const vhsFrames = Array.from(vhsLayer.querySelectorAll('.vhs-frame'));
-
-    let activeIndex = 0;
-    function showFrame(i) {
-      if (i === activeIndex) return;
-      vhsFrames[activeIndex].classList.remove('active');
-      vhsFrames[i].classList.add('active');
-      activeIndex = i;
-    }
-
-    function waitForImg(im) {
-      return im.complete && im.naturalWidth > 0
-        ? Promise.resolve()
-        : new Promise(resolve => {
-            im.addEventListener('load',  resolve, { once: true });
-            im.addEventListener('error', resolve, { once: true });
-          });
-    }
-
-    function startToggle() {
-      let onA = true;
-      showFrame(TOGGLE_A);
-      setInterval(() => {
-        onA = !onA;
-        showFrame(onA ? TOGGLE_A : TOGGLE_B);
-      }, TOGGLE_MS);
-    }
-
-    // No preroll flicker — the page lands on frame_04 directly. Once frames
-    // are ready, the wordmark fades in and starts bouncing. The 04↔03 PLAY
-    // blink toggle is held back until after the password is entered.
-    let toggleStarted = false;
-    function startToggleOnce() {
-      if (toggleStarted) return;
-      toggleStarted = true;
-      startToggle();
-    }
-    function revealBrand() {
-      document.body.classList.add('brand-ready');
-      startBounce();
-    }
-
-    // ---- Password gate ----
-    // Plain-text compare. The previous version hashed the input with
-    // crypto.subtle.digest() to avoid putting the password in source — but
-    // crypto.subtle requires a secure context (HTTPS or localhost), and the
-    // dev server runs on a LAN IP (192.168.x.x). iOS Safari treats LAN IPs
-    // as insecure, so the digest call rejected silently, the gate appeared
-    // dead on phones. Since the gate is client-side anyway and the SHA-256
-    // hash itself sits in source, hashing added obfuscation but no actual
-    // security. Direct compare works in every context.
-    const PASSWORD = 'play';
-
-    const gate      = document.getElementById('gate');
-    const gateInput = document.getElementById('gate-input');
-    const gateError = document.getElementById('gate-error');
-
-    let unlocked    = false;
-    let framesReady = false;
-
-    // On iOS Safari, position:fixed elements still cover the full layout
-    // viewport when the on-screen keyboard is up — the keyboard just sits
-    // on top. With the gate vertically centered (justify-content: center),
-    // the lower portion of the form (including the submit button) can land
-    // behind the keyboard, making it unreachable to taps. Bind the gate's
-    // height to the visual viewport so its content stays inside the visible
-    // area whether the keyboard is up or down.
-    if (window.visualViewport) {
-      const vv = window.visualViewport;
-      const fitGate = () => {
-        gate.style.height = vv.height + 'px';
-        gate.style.top    = vv.offsetTop + 'px';
-      };
-      vv.addEventListener('resize', fitGate);
-      vv.addEventListener('scroll', fitGate);
-      fitGate();
-    }
-
-    function tryUnlock(value) {
-      // Lowercase the input — iOS predictive text and some autocaps
-      // settings can sneak a capital first letter past `autocapitalize="off"`.
-      if (value.toLowerCase() === PASSWORD) {
-        unlock();
-      } else {
-        showError();
-      }
-    }
-
-    function unlock() {
-      if (unlocked) return;
-      unlocked = true;
-      document.body.classList.add('unlocked');
-      try { gateInput.blur(); } catch (_) {}
-      // Past the gate now — kick off the 04↔03 PLAY blink loop.
-      startToggleOnce();
-    }
-
-    function showError() {
-      gateError.classList.add('visible');
-      gate.classList.add('shaking');
-      gateInput.value = '';
-      setTimeout(() => {
-        gate.classList.remove('shaking');
-      }, 500);
-      setTimeout(() => {
-        gateError.classList.remove('visible');
-      }, 1100);
-    }
-
-    // Make the input grow/shrink with its typed text so the block cursor
-    // sits right after the last character instead of at a fixed offset.
-    const gateMeasure = document.createElement('span');
-    gateMeasure.className = 'gate-input gate-measure';
-    gateMeasure.setAttribute('aria-hidden', 'true');
-    gateInput.parentElement.appendChild(gateMeasure);
-    function syncInputWidth() {
-      gateMeasure.textContent = gateInput.value || '';
-      // +2px buffer absorbs sub-pixel rounding so the last glyph isn't clipped
-      // on the right edge.
-      gateInput.style.width = (gateMeasure.offsetWidth + 2) + 'px';
-      // The input's internal scroll-to-caret behavior can push the first
-      // character off-screen on the left when width grows from 0 — pin it.
-      gateInput.scrollLeft = 0;
-    }
-    gateInput.addEventListener('input', syncInputWidth);
-    // Run once after the VCR font has loaded — measurement before the font
-    // arrives gives a width based on the fallback font.
-    if (document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(syncInputWidth);
-    } else {
-      syncInputWidth();
-    }
-
-    gate.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const v = gateInput.value.trim();
-      if (!v) return;
-      tryUnlock(v);
-    });
-
-    // iOS submit-button fix.
-    // The native flow (button click → form submit) breaks on iOS Safari when
-    // the input is focused: tapping the button blurs the input, the keyboard
-    // collapses, the layout shifts under the tap, and the eventual `click`
-    // misses. Two-part fix:
-    //   1. mousedown preventDefault keeps focus on the input — keyboard
-    //      stays up, layout doesn't shift.
-    //   2. pointerup runs the unlock directly, bypassing the click chain
-    //      entirely. Pointer events cover both touch and mouse uniformly,
-    //      so this works on desktop, iOS, and Android with one handler.
-    // unlock() is idempotent, so a duplicate trigger from the form's submit
-    // handler (Enter key) doesn't matter.
-    const gateSubmit = gate.querySelector('.gate-submit');
-    gateSubmit.addEventListener('mousedown', (e) => { e.preventDefault(); });
-    gateSubmit.addEventListener('pointerup', (e) => {
-      if (e.button !== undefined && e.button !== 0) return; // left/primary only
-      e.preventDefault();
-      const v = gateInput.value.trim();
-      if (v) tryUnlock(v);
-    });
-
-    // The input has width:0 when empty, so it has no tap target. Tapping
-    // anywhere on the gate focuses the input — also nicer UX on mobile.
-    // Skip the submit button so its tap submits the form instead of refocusing.
-    gate.addEventListener('click', (e) => {
-      if (e.target === gateInput) return;          // already targeting input
-      if (e.target.closest('.gate-submit')) return; // let submit work normally
-      gateInput.focus();
-    });
-
-    // Wait for all 4 frames to load, then bring the wordmark on. The preloader
-    // (centered ENTER button) is already visible — its tap advances to the
-    // password gate. Every page load runs the full entry experience: no
-    // sessionStorage cache, no skip-the-gate path. The whole point of the
-    // entry is the entry, so refreshes pay the toll too.
-    function startWhenReady() {
-      if (!framesReady) return;
-      if (startWhenReady.fired) return;
-      startWhenReady.fired = true;
-      revealBrand();
-    }
-    Promise.all(vhsFrames.map(waitForImg)).then(() => {
-      framesReady = true;
-      startWhenReady();
-    });
-    setTimeout(() => {
-      framesReady = true;
-      startWhenReady();
-    }, 2000);
-
-    // ---- Background audio ----
-    // Plays on the first user gesture (ENTER tap) so iOS/Safari autoplay
-    // policies are satisfied. Loops, fades in to avoid a hard pop. The mute
-    // toggle in the corner lets the user kill it whenever.
-    const bgAudio = new Audio('youtube-audio-compressed.mp3');
-    bgAudio.loop = true;
-    bgAudio.volume = 0;
-    bgAudio.preload = 'auto';
-
-    let audioStarted = false;
-    // Tracked so the back button can cancel a fade-in that's still mid-flight
-    // and avoid two intervals fighting over volume on the next entry.
-    let audioFadeInId = null;
-    function startAudio() {
-      if (audioStarted) return;
-      audioStarted = true;
-      bgAudio.play().then(() => {
-        // Fade in to ~50% over ~1.6s so it doesn't slam in
-        const target = 0.5;
-        const stepMs = 80;
-        const steps  = 20;
-        let i = 0;
-        audioFadeInId = setInterval(() => {
-          i += 1;
-          bgAudio.volume = Math.min(target, (i / steps) * target);
-          if (i >= steps) {
-            clearInterval(audioFadeInId);
-            audioFadeInId = null;
-          }
-        }, stepMs);
-      }).catch(() => {
-        // If autoplay still gets blocked for any reason, leave audioStarted
-        // false-equivalent so the next interaction can retry.
-        audioStarted = false;
-      });
-    }
-
-    // Mute toggle — small VCR-styled button bottom-right.
-    const muteBtn = document.getElementById('mute-toggle');
-    function syncMuteUi() {
-      muteBtn.textContent = bgAudio.muted ? 'sound: off' : 'sound: on';
-    }
-    muteBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      bgAudio.muted = !bgAudio.muted;
-      // First click also counts as a user gesture — start audio if it
-      // hasn't started yet (e.g., user toggles before tapping ENTER).
-      if (!audioStarted && !bgAudio.muted) startAudio();
-      syncMuteUi();
-    });
-    syncMuteUi();
-
-    // Back button — returns the visitor to the preloader ("click to start").
-    // It's an in-page back, not a browser back: removes the preloader-passed
-    // and unlocked body classes (so the gate and menu fade out and the
-    // preloader fades back in), clears the input, and stops the song so the
-    // next ENTER kicks off a fresh play with the same fade-in.
-    document.getElementById('back-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      document.body.classList.remove('unlocked', 'preloader-passed');
-      unlocked = false;
-      gateInput.value = '';
-      syncInputWidth();
-      // Stop and reset audio. Cancel any in-flight fade-in first so a stale
-      // interval doesn't keep ticking volume on a paused element. Mute state
-      // is left alone — the user's sound preference persists across re-entry.
-      if (audioFadeInId) {
-        clearInterval(audioFadeInId);
-        audioFadeInId = null;
-      }
-      bgAudio.pause();
-      bgAudio.currentTime = 0;
-      bgAudio.volume = 0;
-      audioStarted = false;
-    });
-
-    // Preloader: the whole layer is the click target. Tap anywhere to dismiss
-    // it and reveal the password gate. The click also acts as the audio's
-    // first user gesture — required for iOS Safari autoplay.
-    document.getElementById('preloader').addEventListener('click', () => {
-      document.body.classList.add('preloader-passed');
-      startAudio();
-      // Focus the input after the gate's fade-in finishes — premature focus
-      // on iOS can pop the keyboard while the gate is still transparent.
-      setTimeout(() => { try { gateInput.focus(); } catch (_) {} }, 550);
-    });
-
-    // ---- DVD-style bounce ----
-    // Wordmark drifts diagonally and reflects off the viewport edges.
-    // Speeds are pixels-per-second so 60Hz / 90Hz / 120Hz devices all
-    // animate at the same visual pace (rAF fires at display refresh rate).
-    const brand = document.querySelector('.brand');
-    const SPEED_X = 78;    // px/sec ( = 1.3 px/frame at 60fps )
-    const SPEED_Y = 57;    // px/sec ( = 0.95 px/frame at 60fps )
-
-    // Bright saturated hues that pop against the VHS blue. The wordmark
-    // cycles through these on every edge hit, like the DVD screensaver.
-    const DVD_COLORS = [
-      '#ff4d4d',   // red
-      '#ff9933',   // orange
-      '#ffea00',   // yellow
-      '#4dff7a',   // green
-      '#4de0ff',   // cyan
-      '#b366ff',   // purple
-      '#ff66d4',   // pink
-    ];
-    let dvdColorIdx = 0;
-    function nextBounceColor() {
-      dvdColorIdx = (dvdColorIdx + 1) % DVD_COLORS.length;
-      brand.style.color = DVD_COLORS[dvdColorIdx];
-    }
-
-    let bx = 0, by = 0;
-    let bdx = SPEED_X, bdy = SPEED_Y;
-    let lastFrameMs = 0;
-
-    function placeStartingPosition() {
-      const bw = brand.offsetWidth, bh = brand.offsetHeight;
-      bx = Math.max(0, (window.innerWidth  - bw) / 2);
-      by = Math.max(0, (window.innerHeight - bh) * 0.34);
-      brand.style.transform = `translate3d(${bx}px, ${by}px, 0)`;
-    }
-
-    function bounceTick(nowMs) {
-      // dt in seconds, capped at 50ms so a tab-restore doesn't teleport us.
-      const dt = lastFrameMs ? Math.min((nowMs - lastFrameMs) / 1000, 0.05) : 0;
-      lastFrameMs = nowMs;
-
-      const bw = brand.offsetWidth, bh = brand.offsetHeight;
-      const maxX = Math.max(0, window.innerWidth  - bw);
-      const maxY = Math.max(0, window.innerHeight - bh);
-
-      bx += bdx * dt;
-      by += bdy * dt;
-
-      if (bx <= 0)    { bx = 0;    bdx = Math.abs(bdx);  nextBounceColor(); }
-      if (bx >= maxX) { bx = maxX; bdx = -Math.abs(bdx); nextBounceColor(); }
-      if (by <= 0)    { by = 0;    bdy = Math.abs(bdy);  nextBounceColor(); }
-      if (by >= maxY) { by = maxY; bdy = -Math.abs(bdy); nextBounceColor(); }
-
-      brand.style.transform = `translate3d(${bx}px, ${by}px, 0)`;
-      requestAnimationFrame(bounceTick);
-    }
-
-    function startBounce() {
-      placeStartingPosition();
-      // Land on the first DVD palette color from the start so the wordmark
-      // never appears in its CSS-default cream — looks more like the screensaver.
-      brand.style.color = DVD_COLORS[dvdColorIdx];
-      lastFrameMs = 0;       // reset so the first frame's dt is 0, not garbage
-      requestAnimationFrame(bounceTick);
-    }
-
-    // Reset starting placement on resize so the wordmark doesn't end up off-screen.
-    window.addEventListener('resize', () => {
-      const bw = brand.offsetWidth, bh = brand.offsetHeight;
-      bx = Math.min(bx, Math.max(0, window.innerWidth  - bw));
-      by = Math.min(by, Math.max(0, window.innerHeight - bh));
-    });
-
-    // ---- VCR menu (post-unlock) ----
-    // Three action types per row:
-    //   `open`     → window.open(data-url) in a new tab; if data-url is "#"
-    //                or missing, falls through to a "NO SIGNAL" overlay.
-    //   `static`   → full-screen visible static for ~1.6s.
-    //   `tracking` → "TRACKING ERROR" shake overlay for ~1.4s.
-    // Keyboard (↑↓/Enter) and pointer (hover/click/tap) drive the same selector.
-    const menuEl    = document.getElementById('menu');
-    const menuItems = Array.from(menuEl.querySelectorAll('.menu-item'));
-    let menuIndex = 0;
-
-    function setMenuIndex(i) {
-      menuIndex = (i + menuItems.length) % menuItems.length;
-      menuItems.forEach((el, idx) =>
-        el.classList.toggle('selected', idx === menuIndex)
-      );
-    }
-
-    document.addEventListener('keydown', (e) => {
-      // Only intercept arrow/enter once the menu is the active surface — pre-
-      // unlock, the gate's input + form-submit handle their own keystrokes.
-      if (!document.body.classList.contains('unlocked')) return;
-      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
-        e.preventDefault();
-        setMenuIndex(menuIndex + 1);
-      } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-        e.preventDefault();
-        setMenuIndex(menuIndex - 1);
-      } else if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        triggerMenuItem(menuItems[menuIndex]);
-      }
-    });
-
-    // Don't let `mouseenter` snap the selector to wherever the cursor happened
-    // to be when the menu faded in (e.g. mid-screen, right where the gate's
-    // submit button used to live). Only follow the cursor after the user has
-    // actually moved it.
-    let mouseHasMoved = false;
-    document.addEventListener('mousemove', () => { mouseHasMoved = true; }, { once: true });
-
-    menuItems.forEach((el, idx) => {
-      el.addEventListener('mouseenter', () => {
-        if (!mouseHasMoved) return;
-        setMenuIndex(idx);
-      });
-      el.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setMenuIndex(idx);
-        triggerMenuItem(el);
-      });
-    });
-
-    function triggerMenuItem(el) {
-      const action = el.dataset.action;
-      if (action === 'open') {
-        const url = el.dataset.url;
-        if (url && url !== '#') {
-          window.open(url, '_blank', 'noopener');
-        } else {
-          showFxText('no signal', 1200);
-        }
-      } else if (action === 'static') {
-        showFxStatic(1600);
-      } else if (action === 'tracking') {
-        showFxText('tracking error', 1400);
-      }
-    }
-
-    const fxStaticEl    = document.getElementById('fx-static');
-    const fxStaticImgEl = fxStaticEl.querySelector('.fx-static-frame');
-    const fxTextEl      = document.getElementById('fx-text');
-
-    function showFxStatic(ms) {
-      // Cycle the noisier VHS frames so the overlay reads as motion. ~80ms
-      // per frame is fast enough to feel like static, slow enough to register.
-      const frames = ['vhs_frames/frame_01.jpg', 'vhs_frames/frame_02.jpg'];
-      let i = 0;
-      fxStaticImgEl.src = frames[0];
-      fxStaticEl.classList.add('on');
-      const id = setInterval(() => {
-        i = (i + 1) % frames.length;
-        fxStaticImgEl.src = frames[i];
-      }, 80);
-      setTimeout(() => {
-        clearInterval(id);
-        fxStaticEl.classList.remove('on');
-      }, ms);
-    }
-
-    function showFxText(text, ms) {
-      fxTextEl.textContent = text;
-      fxTextEl.classList.add('on');
-      setTimeout(() => fxTextEl.classList.remove('on'), ms);
-    }
-  </script>
 </body>
 </html>
