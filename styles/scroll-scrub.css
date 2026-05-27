@@ -12,8 +12,16 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     html, body {
-      height: 100%;
-      width: 100%;
+      /* height: 100% on iOS Safari resolves to the LAYOUT viewport, which
+         excludes the safe-area zones under the status bar and URL bar — so
+         fixed elements with inset:0 stop at those edges and the safe-area
+         strips appear as solid black above/below the page content. 100dvh
+         resolves to the DYNAMIC visual viewport, which includes those
+         zones, so the backdrop image extends behind Safari's translucent
+         chrome and gets blurred through it instead of cutting off. */
+      height: 100%;            /* fallback for browsers without dvh */
+      height: 100dvh;
+      width: 100vw;
       /* Black so iOS Safari's translucent chrome doesn't get tinted by a
          document-level color. Lets the chrome's blur sample the actual video
          content above instead of leaning toward a static body color. */
