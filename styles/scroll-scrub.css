@@ -517,14 +517,25 @@
     }
     .pk-card.red       { color: #c81d2a; }            /* hearts + diamonds */
     .pk-card.facedown  {
-      background: repeating-linear-gradient(
-        45deg,
-        rgba(30, 16, 190, 0.95) 0 6px,
-        rgba(20, 12, 130, 0.95) 6px 12px
-      );
-      color: rgba(255, 245, 196, 0.35);
+      /* Classic playing-card back: deep red with a fine cross-hatch pattern
+         and a cream inner frame that mimics the card-stock edge of a Bicycle-
+         style deck. No "?" — real cards don't have one (hidden via the rule
+         below on the rank/suit children). */
+      background:
+        repeating-linear-gradient(45deg,
+          rgba(255, 230, 230, 0.18) 0 2px,
+          transparent 2px 5px),
+        repeating-linear-gradient(-45deg,
+          rgba(255, 230, 230, 0.18) 0 2px,
+          transparent 2px 5px),
+        #9b1c2b;
+      box-shadow:
+        inset 0 0 0 2px rgba(255, 250, 240, 0.95),
+        inset 0 0 0 4px #9b1c2b;
       cursor: default;
     }
+    .pk-card.facedown .pk-card-rank,
+    .pk-card.facedown .pk-card-suit { visibility: hidden; }
     .pk-card.held {
       outline: 3px solid #ffea00;
       outline-offset: 1px;

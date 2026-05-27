@@ -1,6 +1,10 @@
     const idleVid  = document.getElementById('idle-video');
     const scrubVid = document.getElementById('scrub-video');
     const endVid   = document.getElementById('end-video');
+    // Menu-only variant (menu.html) omits the video stack entirely — gate
+    // unlocks straight into the VCR menu over a static image backdrop. Every
+    // video-touching code path below is guarded by HAS_VIDEOS.
+    const HAS_VIDEOS = !!(idleVid && scrubVid && endVid);
 
     // Desktop (mouse pointer) gets the high-res 1080p originals from videos_hd/.
     // Mobile / touch devices get the smaller 720p files from the project root.
@@ -9,8 +13,10 @@
 
     // Set idle video src now that we know which directory to use. Autoplay
     // attribute on the element kicks in once the src is set + load() runs.
-    idleVid.src = VIDEO_DIR + 'static%20intro.mp4';
-    try { idleVid.load(); } catch (_) {}
+    if (HAS_VIDEOS) {
+      idleVid.src = VIDEO_DIR + 'static%20intro.mp4';
+      try { idleVid.load(); } catch (_) {}
+    }
 
     // Fetch each non-autoplay video to a Blob and hand iOS an in-memory URL —
     // sidesteps iOS Safari's quirky lazy-load behavior for non-autoplay videos.
@@ -35,6 +41,7 @@
     // few seconds later) the scrub video is ready.
     let scrubPreloaded = false;
     function preloadVideosOnce() {
+      if (!HAS_VIDEOS) return;
       if (scrubPreloaded) return;
       scrubPreloaded = true;
       preloadAsBlob(scrubVid, VIDEO_DIR + 'brain%20zoom%201.mp4');
@@ -47,6 +54,7 @@
       if (state === next) return;
       state = next;
       document.body.dataset.state = next;
+      if (!HAS_VIDEOS) return;            // menu-only variant: state attr is enough
       // Lower layers stay active as backdrops so the new layer fades in over
       // a fully-opaque previous frame (no black flash through transparency).
       setActive(idleVid,  true);
@@ -69,20 +77,23 @@
     function setActive(el, on) {
       el.classList.toggle('active', on);
     }
-    setActive(idleVid, true); // initial paint
+    if (HAS_VIDEOS) setActive(idleVid, true); // initial paint
 
     // iOS Safari frequently ignores the `autoplay` HTML attribute. Force the
     // idle video to play once it has data, and on visibility return.
     function playIdle() {
+      if (!HAS_VIDEOS) return;
       idleVid.muted = true;
       const p = idleVid.play();
       if (p && typeof p.catch === 'function') p.catch(() => {});
     }
-    if (idleVid.readyState >= 2) playIdle();
-    else idleVid.addEventListener('loadeddata', playIdle);
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && state === 'idle') playIdle();
-    });
+    if (HAS_VIDEOS) {
+      if (idleVid.readyState >= 2) playIdle();
+      else idleVid.addEventListener('loadeddata', playIdle);
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && state === 'idle') playIdle();
+      });
+    }
 
     // iOS Safari blocks playback until a video has been play()'d inside a user
     // gesture. The Start click unlocks scrubVid by itself (we play() it directly).
@@ -90,6 +101,7 @@
     // succeeds — the Start click is also our gesture window for that.
     let primed = false;
     function primeOnFirstGesture() {
+      if (!HAS_VIDEOS) return;
       if (primed) return;
       primed = true;
       const p = endVid.play();
@@ -114,17 +126,26 @@
     }
     function checkReady() {
       if (videosReady) return;
+      if (!HAS_VIDEOS) {
+        // Menu-only: only the font matters for the gate to render correctly.
+        let fontOk = true;
+        try { fontOk = document.fonts.check('1em LowerResolution'); } catch (_) {}
+        if (fontOk) markReady('menu-only');
+        return;
+      }
       const idleOk  = idleVid.readyState  >= 3;
       const scrubOk = scrubVid.readyState >= 1;
       let fontOk = true;
       try { fontOk = document.fonts.check('1em LowerResolution'); } catch (_) {}
       if (idleOk && scrubOk && fontOk) markReady('all-ready');
     }
-    idleVid.addEventListener('canplay',         checkReady);
-    idleVid.addEventListener('canplaythrough',  checkReady);
-    scrubVid.addEventListener('loadedmetadata', checkReady);
-    scrubVid.addEventListener('loadeddata',     checkReady);
-    scrubVid.addEventListener('canplay',        checkReady);
+    if (HAS_VIDEOS) {
+      idleVid.addEventListener('canplay',         checkReady);
+      idleVid.addEventListener('canplaythrough',  checkReady);
+      scrubVid.addEventListener('loadedmetadata', checkReady);
+      scrubVid.addEventListener('loadeddata',     checkReady);
+      scrubVid.addEventListener('canplay',        checkReady);
+    }
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(checkReady);
     }
@@ -154,12 +175,14 @@
       if (p && p.catch) p.catch(() => {});
       watchPlayback();
     }
-    startBtn.addEventListener('click', startPlayback);
-    // After the press animation finishes, drop the class so the next press
-    // (Continue) can re-trigger it. Button is invisible by then anyway.
-    startBtn.addEventListener('animationend', (e) => {
-      if (e.animationName === 'vhs-press') startBtn.classList.remove('pressed');
-    });
+    if (startBtn) {
+      startBtn.addEventListener('click', startPlayback);
+      // After the press animation finishes, drop the class so the next press
+      // (Continue) can re-trigger it. Button is invisible by then anyway.
+      startBtn.addEventListener('animationend', (e) => {
+        if (e.animationName === 'vhs-press') startBtn.classList.remove('pressed');
+      });
+    }
 
     function watchPlayback() {
       cancelAnimationFrame(watchRaf);
@@ -177,16 +200,18 @@
       watchRaf = requestAnimationFrame(tick);
     }
 
-    scrubVid.addEventListener('ended', () => {
-      cancelAnimationFrame(watchRaf);
-      document.body.classList.remove('paused-at-checkpoint');
-      setState('ended');
-    });
+    if (HAS_VIDEOS) {
+      scrubVid.addEventListener('ended', () => {
+        cancelAnimationFrame(watchRaf);
+        document.body.classList.remove('paused-at-checkpoint');
+        setState('ended');
+      });
 
-    // Paint first frame of scrub video so it's primed
-    function primeScrub() { scrubVid.currentTime = 0; }
-    if (scrubVid.readyState >= 2) primeScrub();
-    else scrubVid.addEventListener('loadeddata', primeScrub);
+      // Paint first frame of scrub video so it's primed
+      const primeScrub = () => { scrubVid.currentTime = 0; };
+      if (scrubVid.readyState >= 2) primeScrub();
+      else scrubVid.addEventListener('loadeddata', primeScrub);
+    }
 
     // ------- VHS intro layer (now a static backdrop for the preloader) -------
     // The intro is no longer a flicker sequence — frame_04 is .active from
@@ -223,7 +248,9 @@
       try { playIdle(); } catch (_) {}
       // iOS Safari often skips loading a video that's been covered by another
       // element. Force-trigger the scrub video's download now that VHS is going.
-      try { if (scrubVid.readyState < 2) scrubVid.load(); } catch (_) {}
+      if (HAS_VIDEOS) {
+        try { if (scrubVid.readyState < 2) scrubVid.load(); } catch (_) {}
+      }
       setTimeout(() => {
         vhsLayer.style.display = 'none';
         document.body.classList.remove('vhs-running');
@@ -266,9 +293,18 @@
       document.body.classList.add('unlocked');
       try { gateInput.blur(); } catch (_) {}
       try { playUnlockChime(); } catch (_) {}
-      // Hand the surface over to the idle state — fades vhs-intro out, fades
-      // static idle brand in, plays idle video, drops vhs-running.
-      fadeOutVHS();
+      if (HAS_VIDEOS) {
+        // Hand the surface over to the idle state — fades vhs-intro out, fades
+        // static idle brand in, plays idle video, drops vhs-running.
+        fadeOutVHS();
+      } else {
+        // Menu-only variant: skip the video sequence. Drop vhs-running so the
+        // back button / mute toggle reveal, and jump straight to the ended
+        // state — that's the body-state the .menu CSS rule keys off. The
+        // vhs-intro layer stays on screen as the static backdrop.
+        document.body.classList.remove('vhs-running');
+        document.body.dataset.state = 'ended';
+      }
     }
     function showError() {
       gateError.classList.add('visible');
@@ -433,13 +469,19 @@
       document.body.classList.remove('minesweeper-on', 'poker-on', 'tk-on');
 
       // Reset the video state machine to idle and rewind everything.
-      setState('idle');
-      scrubVid.pause();
-      scrubVid.currentTime = 0;
-      endVid.pause();
-      endVid.currentTime = 0;
-      nextCheckpointIdx = 0;
-      cancelAnimationFrame(watchRaf);
+      if (HAS_VIDEOS) {
+        setState('idle');
+        scrubVid.pause();
+        scrubVid.currentTime = 0;
+        endVid.pause();
+        endVid.currentTime = 0;
+        nextCheckpointIdx = 0;
+        cancelAnimationFrame(watchRaf);
+      } else {
+        // Menu-only: just clear the ended state so the menu hides.
+        state = 'idle';
+        document.body.dataset.state = 'idle';
+      }
 
       // Restore the vhs-intro layer as the preloader backdrop. fadeOutVHS()
       // hides it with display:none + .fading; undo both so the bouncing
@@ -654,6 +696,7 @@
         if (c.n > 0) {
           c.el.textContent = c.n;
           c.el.style.color = MS_NUM_COLORS[c.n];
+          c.el.dataset.n = c.n;            // hook for per-number palette overrides (e.g. XP skin)
         } else {
           // Zero-neighbor — cascade through neighbors so the user gets a chunk.
           for (const n of msNeighbors(c)) {
@@ -1248,13 +1291,17 @@
       const dbg = document.getElementById('debug');
       let lastErr = '—';
 
-      ['error','stalled','abort'].forEach(ev => {
-        [idleVid, scrubVid, endVid].forEach(v => v.addEventListener(ev, e => {
-          lastErr = `${v.id}.${ev} (code=${v.error && v.error.code})`;
-        }));
-      });
+      if (HAS_VIDEOS) {
+        ['error','stalled','abort'].forEach(ev => {
+          [idleVid, scrubVid, endVid].forEach(v => v.addEventListener(ev, e => {
+            lastErr = `${v.id}.${ev} (code=${v.error && v.error.code})`;
+          }));
+        });
+      }
 
-      const fmt = v => `rs=${v.readyState} dur=${isFinite(v.duration)?v.duration.toFixed(2):'?'} t=${v.currentTime.toFixed(2)} paused=${v.paused}`;
+      const fmt = v => v
+        ? `rs=${v.readyState} dur=${isFinite(v.duration)?v.duration.toFixed(2):'?'} t=${v.currentTime.toFixed(2)} paused=${v.paused}`
+        : '—';
 
       const vhsStatus = () => {
         const loaded = vhsFrames.filter(im => im.complete && im.naturalWidth > 0).length;

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <!-- No theme-color — leaving it off lets iOS Safari's translucent URL bar
+       and status bar dynamically blur the underlying content, so the chrome
+       always blends with whatever scene is on screen. -->
+  <title>quentin.</title>
+  <link rel="stylesheet" href="styles/scroll-scrub.css">
+</head>
+<body data-state="idle" class="vhs-running">
+
+  <!-- Bouncing wordmark — preloader-phase only. The static `.brand` inside
+       .stage is the post-unlock idle wordmark; this one is the DVD-bounce. -->
+  <div class="brand-bounce">quentin.</div>
+
+  <!-- Password gate. Fades in on preloader-passed, fades out on unlocked. -->
+  <form class="gate" id="gate" autocomplete="off" novalidate>
+    <div class="gate-prompt">enter password</div>
+    <div class="gate-input-wrap">
+      <span class="gate-input-prefix">&gt;</span>
+      <input
+        type="text"
+        class="gate-input"
+        id="gate-input"
+        autocomplete="off"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
+        inputmode="text"
+        maxlength="32"
+        autofocus>
+      <span class="gate-cursor" aria-hidden="true"></span>
+    </div>
+    <div class="gate-error" id="gate-error">access denied</div>
+    <button type="submit" class="gate-submit">enter</button>
+    <button type="button" class="gate-try-another cycle-btn">try another way</button>
+  </form>
+
+  <!-- Minesweeper bypass — clicking "try another way" on the gate opens this
+       panel. Clearing the board unlocks the site (same path as the password). -->
+  <div class="minesweeper" id="minesweeper" aria-label="Minesweeper bypass">
+    <div class="ms-header">
+      <span id="ms-mines-left">12</span>
+      <span class="ms-timer" id="ms-timer">2:00</span>
+      <span class="ms-status" id="ms-status">clear the board</span>
+    </div>
+    <div class="ms-grid" id="ms-grid"></div>
+    <div class="ms-footer">
+      <button type="button" class="ms-btn" id="ms-retry">retry</button>
+    </div>
+    <div class="ms-hint">right-click or long-press to flag</div>
+    <button type="button" class="gate-try-another cycle-btn">try another way</button>
+  </div>
+
+  <!-- Video poker bypass — open via the gate's "or another way" button. Real
+       5-card draw mechanics; royal flush is the only unlock. Joke = the odds. -->
+  <div class="poker" id="poker" aria-label="Video poker bypass">
+    <div class="pk-header">
+      <div class="pk-title">video poker</div>
+      <div class="pk-odds-row">
+        <div class="pk-odds">land four of a kind or better to unlock</div>
+        <button type="button" class="pk-info" id="pk-info-btn" aria-label="How to play and pay table" aria-haspopup="dialog" aria-controls="pk-paytable">?</button>
+      </div>
+    </div>
+    <div class="pk-status" id="pk-status">deal to begin</div>
+    <div class="pk-cards" id="pk-cards"></div>
+    <div class="pk-footer">
+      <button type="button" class="pk-btn" id="pk-action">deal</button>
+    </div>
+    <div class="ms-hint">tap a card to hold · hand <span id="pk-count">0</span></div>
+    <button type="button" class="gate-try-another cycle-btn">try another way</button>
+  </div>
+
+  <!-- Video poker pay table modal — sibling of .poker so its z-index isn't
+       trapped in the poker stacking context. Hand names match the labels
+       returned by pkRank() in the JS. Winning hands (royal flush, straight
+       flush, four of a kind) have class="win". -->
+  <div class="pk-paytable" id="pk-paytable" role="dialog" aria-modal="true" aria-labelledby="pk-paytable-title" aria-hidden="true">
+    <div class="pk-paytable-inner">
+      <div class="pk-paytable-title" id="pk-paytable-title">how to play</div>
+      <ul class="pk-instructions">
+        <li><span class="pk-step-key">deal</span><span class="pk-step-desc">get 5 cards</span></li>
+        <li><span class="pk-step-key">tap</span><span class="pk-step-desc">hold the cards you want</span></li>
+        <li><span class="pk-step-key">draw</span><span class="pk-step-desc">replace the rest</span></li>
+        <li><span class="pk-step-key">★</span><span class="pk-step-desc">match a starred hand to unlock</span></li>
+      </ul>
+      <div class="pk-paytable-divider">— pay table —</div>
+      <ul class="pk-paytable-list">
+        <li class="win"><span class="pk-pt-mark">★</span><span class="pk-pt-name">royal flush</span><span class="pk-pt-desc">10 J Q K A · same suit</span></li>
+        <li class="win"><span class="pk-pt-mark">★</span><span class="pk-pt-name">straight flush</span><span class="pk-pt-desc">5 in a row · same suit</span></li>
+        <li class="win"><span class="pk-pt-mark">★</span><span class="pk-pt-name">four of a kind</span><span class="pk-pt-desc">4 cards · same rank</span></li>
+        <li><span class="pk-pt-mark">·</span><span class="pk-pt-name">full house</span><span class="pk-pt-desc">3 + 2 of a kind</span></li>
+        <li><span class="pk-pt-mark">·</span><span class="pk-pt-name">flush</span><span class="pk-pt-desc">5 cards · same suit</span></li>
+        <li><span class="pk-pt-mark">·</span><span class="pk-pt-name">straight</span><span class="pk-pt-desc">5 cards · in a row</span></li>
+        <li><span class="pk-pt-mark">·</span><span class="pk-pt-name">three of a kind</span><span class="pk-pt-desc">3 cards · same rank</span></li>
+        <li><span class="pk-pt-mark">·</span><span class="pk-pt-name">two pair</span><span class="pk-pt-desc">two pairs</span></li>
+        <li><span class="pk-pt-mark">·</span><span class="pk-pt-name">jacks or better</span><span class="pk-pt-desc">pair of J / Q / K / A</span></li>
+      </ul>
+      <button type="button" class="pk-pt-close" id="pk-pt-close">close</button>
+    </div>
+  </div>
+
+  <!-- 2048 bypass — slide tiles to merge them. Reach the 2048 tile to unlock.
+       Hard but real: an experienced player can clear it in ~10-30 minutes. -->
+  <div class="tk" id="tk" aria-label="2048 bypass">
+    <div class="tk-header">
+      <span>2048</span>
+      <span>score <span id="tk-score">0</span></span>
+    </div>
+    <div class="tk-status" id="tk-status">reach 2048 to unlock</div>
+    <div class="tk-grid" id="tk-grid"></div>
+    <div class="tk-footer">
+      <button type="button" class="tk-btn" id="tk-new">new game</button>
+    </div>
+    <div class="ms-hint">arrow keys · wasd · swipe</div>
+    <button type="button" class="gate-try-another cycle-btn">try another way</button>
+  </div>
+
+  <!-- Pre-password preloader — frame_04 backdrop comes from .vhs-intro below.
+       This is just a full-screen click target. Tap anywhere to advance. -->
+  <div class="preloader" id="preloader"></div>
+
+  <!-- Background-audio mute toggle. Sits above every other layer so it stays
+       reachable through gate, idle, scrubbing, ended states. -->
+  <button type="button" class="mute-toggle" id="mute-toggle" aria-label="Toggle sound">sound: on</button>
+
+  <!-- Back button — bottom-left mirror of the mute toggle. In-page back:
+       resets state and returns to the preloader. -->
+  <button type="button" class="back-btn" id="back-btn" aria-label="Go back">&lt; back</button>
+
+  <div class="stage">
+    <!-- Three layered videos: idle (autoplay loop), scrub (driven by input), end (plays once) -->
+    <!-- idle plays immediately via the URL src (iOS lets autoplay+muted videos load).
+         scrub & end are loaded via fetch->Blob in JS to bypass iOS's quirky multi-video
+         loading rules — see the preloadAsBlob() block in the script. -->
+    <!-- src is set in JS so desktop (pointer:fine) gets videos_hd/ originals
+         and mobile gets the smaller re-encoded files in the project root. -->
+    <video id="idle-video"  class="layer" muted loop autoplay playsinline preload="auto"></video>
+    <video id="scrub-video" class="layer" muted          playsinline></video>
+    <video id="end-video"   class="layer" muted loop     playsinline></video>
+
+    <div class="brand">quentin.</div>
+    <button class="start-btn" id="start-btn" type="button">start</button>
+
+    <!-- VCR-style main menu — visible only in the ended state. ↑↓/click to
+         move the selector; Enter/click to fire the channel's action. -->
+    <div class="menu" id="menu" role="menu" aria-label="Main menu">
+      <div class="menu-header">─ main menu ─</div>
+      <div class="menu-list" id="menu-list">
+        <div class="menu-item selected" data-i="0" data-action="open" data-url="#" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">01</span><span class="menu-label">pray i die</span>
+        </div>
+        <div class="menu-item" data-i="1" data-action="open" data-url="#" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">02</span><span class="menu-label">ai media co</span>
+        </div>
+        <div class="menu-item" data-i="2" data-action="open" data-url="#" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">03</span><span class="menu-label">instagram</span>
+        </div>
+        <div class="menu-item" data-i="3" data-action="open" data-url="#" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">04</span><span class="menu-label">music</span>
+        </div>
+        <div class="menu-item" data-i="4" data-action="open" data-url="#" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">05</span><span class="menu-label">shop</span>
+        </div>
+        <div class="menu-item" data-i="5" data-action="static" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">06</span><span class="menu-label">static</span>
+        </div>
+        <div class="menu-item" data-i="6" data-action="tracking" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">07</span><span class="menu-label">???</span>
+        </div>
+        <div class="menu-item" data-i="7" data-action="colorbars" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">08</span><span class="menu-label">color bars</span>
+        </div>
+        <div class="menu-item" data-i="8" data-action="text" data-text="rew ◀◀" data-ms="1400" data-tone="rewind" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">09</span><span class="menu-label">rewind</span>
+        </div>
+        <div class="menu-item" data-i="9" data-action="text" data-text="ff ▶▶" data-ms="1400" data-tone="ffwd" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">10</span><span class="menu-label">fast fwd</span>
+        </div>
+        <div class="menu-item" data-i="10" data-action="text" data-text="▮▮ pause" data-ms="1600" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">11</span><span class="menu-label">pause</span>
+        </div>
+        <div class="menu-item" data-i="11" data-action="text" data-text="● rec" data-ms="1800" data-color="red" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">12</span><span class="menu-label">record</span>
+        </div>
+        <div class="menu-item" data-i="12" data-action="deadair" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">13</span><span class="menu-label">dead air</span>
+        </div>
+        <div class="menu-item" data-i="13" data-action="poweroff" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">14</span><span class="menu-label">power off</span>
+        </div>
+        <div class="menu-item" data-i="14" data-action="text" data-text="be kind. rewind." data-ms="1600" role="menuitem" tabindex="-1">
+          <span class="menu-arrow">▶</span><span class="menu-num">15</span><span class="menu-label">be kind rewind</span>
+        </div>
+      </div>
+      <div class="menu-footer">▲▼ navigate &nbsp;&nbsp; enter select</div>
+    </div>
+
+    <!-- FX overlays for channel actions. -->
+    <div class="fx-static" id="fx-static" aria-hidden="true">
+      <img class="fx-static-frame" alt="" src="vhs_frames/frame_01.jpg">
+    </div>
+    <div class="fx-text" id="fx-text" aria-hidden="true">tracking error</div>
+    <div class="fx-colorbars" id="fx-colorbars" aria-hidden="true"></div>
+    <div class="fx-deadair" id="fx-deadair" aria-hidden="true"></div>
+    <div class="fx-poweroff" id="fx-poweroff" aria-hidden="true">
+      <div class="fx-poweroff-line"></div>
+    </div>
+
+    <!-- VHS intro: cycles through static frames, lands on last, holds, fades out.
+         All 4 frames sit pre-decoded in the DOM; JS just toggles which has the
+         .active class. iOS Safari decodes each <img> once on load; swaps after
+         that are pure CSS, no decode lag per frame.
+         <picture> serves the high-res PNG to desktop (pointer:fine), and the
+         compressed mobile JPG to phones — no JS needed for the swap. -->
+    <!-- frame_04 (plain blue) is .active from the start — the preloader sits
+         on it as a backdrop. The old flicker sequence (frame_01→03 cycle then
+         04↔03 toggle) is gone; the preloader+gate IS the new intro. -->
+    <div class="vhs-intro" id="vhs-intro">
+      <picture>
+        <source srcset="vhs_frames_hd/frame_01.png" media="(pointer: fine)">
+        <img class="vhs-frame" data-i="0" alt="" src="vhs_frames/frame_01.jpg">
+      </picture>
+      <picture>
+        <source srcset="vhs_frames_hd/frame_02.png" media="(pointer: fine)">
+        <img class="vhs-frame" data-i="1" alt="" src="vhs_frames/frame_02.jpg">
+      </picture>
+      <picture>
+        <source srcset="vhs_frames_hd/frame_03.png" media="(pointer: fine)">
+        <img class="vhs-frame" data-i="2" alt="" src="vhs_frames/frame_03.jpg">
+      </picture>
+      <picture>
+        <source srcset="vhs_frames_hd/frame_04.png" media="(pointer: fine)">
+        <img class="vhs-frame active" data-i="3" alt="" src="vhs_frames/frame_04.jpg" fetchpriority="high">
+      </picture>
+    </div>
+
+    <div class="debug" id="debug"></div>
+  </div>
+
+  <script src="scripts/scroll-scrub.js"></script>
+
+</body>
+</html>
