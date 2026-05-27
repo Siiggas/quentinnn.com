@@ -14,9 +14,15 @@
     html, body {
       /* height:100dvh = dynamic visual viewport, includes the strips under
          iOS Safari's chrome. Without this iOS resolves height:100% to the
-         smaller layout viewport and the backdrop stops at the chrome edges. */
+         smaller layout viewport and the backdrop stops at the chrome edges.
+         min-height adds 1px so the page is technically scrollable — iOS
+         Safari only applies translucent chrome to pages it sees as
+         scrollable documents. All visual content is position:fixed so the
+         extra pixel has nowhere to scroll to in practice. */
       height: 100%;            /* fallback */
       height: 100dvh;
+      min-height: calc(100% + 1px);          /* fallback */
+      min-height: calc(100dvh + 1px);
       width: 100vw;
       /* Black so iOS Safari's translucent chrome doesn't get tinted by a
          document-level color. Lets the chrome's blur sample the actual video
