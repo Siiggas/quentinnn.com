@@ -484,11 +484,14 @@
     }
 
     /* "Try another way" sits outside the XP window. Match the gate's
-       .gate-try-another (first page) exactly: same VCR OSD Mono font,
-       uppercase, cream fill, 8-layer chromatic-aberration shadow, AND
-       the same blur+contrast filter the gate parent applies. The game-
-       panel reset above stripped filter/text-shadow from descendants
-       with !important, so reapply both here. */
+       .gate-try-another (first page) on font, color, casing, and the
+       8-layer chromatic-aberration text-shadow. Deliberately NO blur
+       filter here, even though the gate has one — the gate's filter is
+       applied to the whole .gate parent (a big compositing texture so
+       the blur stays clean), while the cycle-btn is nested inside a
+       position:fixed game panel and Safari mobile rasterizes the panel
+       to a smaller texture before applying any filter, which smears the
+       chromatic-aberration colors into a fuzzy mess on small text. */
     .minesweeper .cycle-btn,
     .poker .cycle-btn,
     .tk .cycle-btn {
@@ -501,7 +504,6 @@
       background: transparent;
       border: 0;
       padding: 0.4rem 0.8rem;
-      filter: blur(0.55px) contrast(1.05) !important;
       text-shadow:
         min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
         max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
