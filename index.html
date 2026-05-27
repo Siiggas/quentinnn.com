@@ -474,14 +474,12 @@
       letter-spacing: 0;
     }
 
-    /* "Try another way" sits outside the XP window. Tone it down to a
-       quiet hyperlink-looking thing so it doesn't compete with the
-       window for attention. */
     /* "Try another way" sits outside the XP window. Match the gate's
-       VCR-styled .gate-try-another (first page) — same VCR OSD Mono font,
-       uppercase casing, cream fill, and chromatic-aberration shadow. The
-       panel reset above stripped these from descendants with !important,
-       so we have to !important them back on. */
+       .gate-try-another (first page) exactly: same VCR OSD Mono font,
+       uppercase, cream fill, 8-layer chromatic-aberration shadow, AND
+       the same blur+contrast filter the gate parent applies. The game-
+       panel reset above stripped filter/text-shadow from descendants
+       with !important, so reapply both here. */
     .minesweeper .cycle-btn,
     .poker .cycle-btn,
     .tk .cycle-btn {
@@ -494,6 +492,7 @@
       background: transparent;
       border: 0;
       padding: 0.4rem 0.8rem;
+      filter: blur(0.55px) contrast(1.05) !important;
       text-shadow:
         min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
         max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
