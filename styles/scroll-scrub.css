@@ -12,14 +12,10 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     html, body {
-      /* height: 100% on iOS Safari resolves to the LAYOUT viewport, which
-         excludes the safe-area zones under the status bar and URL bar — so
-         fixed elements with inset:0 stop at those edges and the safe-area
-         strips appear as solid black above/below the page content. 100dvh
-         resolves to the DYNAMIC visual viewport, which includes those
-         zones, so the backdrop image extends behind Safari's translucent
-         chrome and gets blurred through it instead of cutting off. */
-      height: 100%;            /* fallback for browsers without dvh */
+      /* height:100dvh = dynamic visual viewport, includes the strips under
+         iOS Safari's chrome. Without this iOS resolves height:100% to the
+         smaller layout viewport and the backdrop stops at the chrome edges. */
+      height: 100%;            /* fallback */
       height: 100dvh;
       width: 100vw;
       /* Black so iOS Safari's translucent chrome doesn't get tinted by a
@@ -28,9 +24,14 @@
       background: #000;
       color: #fff;
       font-family: 'LowerResolution', system-ui, sans-serif;
-      overflow: hidden;
+      /* No overflow:hidden / touch-action:none on the root — iOS Safari
+         needs to see the page as a scrollable document to apply its
+         translucent chrome blur (a non-scrollable "app" page gets opaque
+         chrome). All visual content here is position:fixed so there's
+         nothing to actually scroll. overscroll-behavior:none kills any
+         bounce. The games' own grids/cells already declare touch-action
+         where they need to capture gestures. */
       overscroll-behavior: none;
-      touch-action: none;
     }
 
     /* ---- Pre-password preloader ---- */
