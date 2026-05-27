@@ -458,60 +458,6 @@
     });
     syncMuteUi();
 
-    // Back button — in-page back to the preloader. Wipes the post-gate state
-    // so the next ENTER tap re-runs the full entry (audio fade-in, video
-    // gesture prime, gate prompt). Mute preference is preserved across re-entry.
-    document.getElementById('back-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-
-      // Exit any open bypass panel.
-      if (typeof msStopTimer === 'function') msStopTimer();
-      document.body.classList.remove('minesweeper-on', 'poker-on', 'tk-on');
-
-      // Reset the video state machine to idle and rewind everything.
-      if (HAS_VIDEOS) {
-        setState('idle');
-        scrubVid.pause();
-        scrubVid.currentTime = 0;
-        endVid.pause();
-        endVid.currentTime = 0;
-        nextCheckpointIdx = 0;
-        cancelAnimationFrame(watchRaf);
-      } else {
-        // Menu-only: just clear the ended state so the menu hides.
-        state = 'idle';
-        document.body.dataset.state = 'idle';
-      }
-
-      // Restore the vhs-intro layer as the preloader backdrop. fadeOutVHS()
-      // hides it with display:none + .fading; undo both so the bouncing
-      // wordmark has something blue to sit on.
-      vhsLayer.style.display = '';
-      vhsLayer.classList.remove('fading');
-
-      // Body classes: back to vhs-running, drop the unlock/pass/brand-ready
-      // chain. brand-bounce-ready stays — the wordmark keeps bouncing.
-      document.body.classList.remove('unlocked', 'preloader-passed', 'brand-ready', 'paused-at-checkpoint');
-      document.body.classList.add('vhs-running');
-      unlocked = false;
-
-      // Clear the gate input so the next entry sees an empty prompt.
-      gateInput.value = '';
-      syncInputWidth();
-
-      // Stop and reset audio. Cancel any in-flight fade-in so a stale
-      // interval doesn't keep ticking volume on a paused element. Mute state
-      // is left alone — the user's sound preference persists across re-entry.
-      if (audioFadeInId) {
-        clearInterval(audioFadeInId);
-        audioFadeInId = null;
-      }
-      bgAudio.pause();
-      bgAudio.currentTime = 0;
-      bgAudio.volume = 0;
-      audioStarted = false;
-    });
-
     // ------- Minesweeper -------
     // 7×7 board, 9 mines. First click is always safe AND opens a chunk via
     // flood-reveal — mines are placed AFTER the first click, avoiding both

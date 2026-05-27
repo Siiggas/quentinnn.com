@@ -222,9 +222,8 @@
       40%, 60%      { transform: translateX( 8px); }
     }
 
-    /* ---- Corner buttons (mute toggle + back button) ---- */
-    .mute-toggle,
-    .back-btn {
+    /* ---- Corner button (mute toggle) ---- */
+    .mute-toggle {
       -webkit-appearance: none;
       appearance: none;
       position: fixed;
@@ -250,21 +249,17 @@
          0 0 0.22em rgba(255, 240, 180, 0.30);
       filter: blur(0.55px) contrast(1.05);
       transition: opacity 1.4s steps(10), color 0.2s ease;
-      /* Hidden on the preloader: audio only starts on the preloader click and
-         there's nothing to go back to from the first screen. Fade both in
-         together once the user advances past the preloader. */
+      /* Hidden on the preloader: audio only starts on the preloader click.
+         Fade in once the user advances past the preloader. */
       opacity: 0;
       pointer-events: none;
     }
     .mute-toggle { right: 1rem; }
-    .back-btn    { left:  1rem; }
-    body.preloader-passed .mute-toggle,
-    body.preloader-passed .back-btn {
+    body.preloader-passed .mute-toggle {
       opacity: 1;
       pointer-events: auto;
     }
-    .mute-toggle:hover, .mute-toggle:active,
-    .back-btn:hover,    .back-btn:active { color: #ffea00; }
+    .mute-toggle:hover, .mute-toggle:active { color: #ffea00; }
 
     /* ---- "try another way" button on the gate (and bypass panels) ---- */
     /* Dim the cream fill via the color's alpha channel — not via `opacity`,

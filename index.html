@@ -3,523 +3,48 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <!-- Deliberately NO theme-color. Setting it makes iOS Safari render
-       the URL bar / status bar as SOLID at that color and kills the
-       built-in translucency. Without it, Safari blurs the page content
-       through the chrome — which is the effect we want so the grass
-       image reads through the URL bar at the bottom. -->
   <title>quentin.</title>
   <link rel="stylesheet" href="styles/scroll-scrub.css">
   <style>
-    /* DSEG7-Classic — SIL OFL 1.1, by Keshikan. The 7-segment LCD font
-       that ships with hardware calculators and the original XP Minesweeper-
-       era counter display. Self-hosted as a 5 KB WOFF2 so the LCD doesn't
-       depend on a CDN. */
-    @font-face {
-      font-family: 'DSEG7 Classic';
-      src: url('fonts/DSEG7Classic-Bold.woff2') format('woff2');
-      font-weight: bold;
-      font-style: normal;
-      font-display: swap;
+    /* The shared games CSS assumes a flat backdrop (the blue VHS frame on
+       index.html). On menu.html the backdrop is a photo, so the games'
+       translucent cells get washed out against the texture. Dim a layer
+       behind each panel while it's shown to restore contrast.
+
+       Each panel already has opacity:0 by default and fades in via body
+       classes, so this background only paints when the panel is visible —
+       no need to gate the rule on a body class. */
+    .gate,
+    .minesweeper,
+    .poker,
+    .tk {
+      background: rgba(0, 0, 0, 0.55);
     }
 
-    /* ===========================================================
-       XP-skinned games variant.
-
-       Only the three bypass games — Minesweeper, Video Poker, 2048 —
-       get the Windows XP treatment. The preloader, password gate,
-       DVD-bouncing wordmark, post-unlock VCR menu, and FX overlays
-       all keep the original VCR look. The contrast is the point:
-       you tear through the VHS world and land in a creaky Windows
-       desktop.
-
-       Everything below is scoped to .minesweeper / .poker / .tk
-       so it can't bleed into the menu or gate.
-       =========================================================== */
-
-    /* Reset the inherited VCR look on each XP-skinned game panel, and
-       dim the grass backdrop behind them — same 55% black as menu.html
-       uses, so the panel reads as a darkened surface with the XP window
-       floating on top. The gate keeps its VCR styling so the dim is on a
-       separate rule below. */
-    .minesweeper, .poker, .tk {
-      background: rgba(0, 0, 0, 0.30) !important;
-      filter: none !important;
-      text-shadow: none !important;
-      letter-spacing: 0 !important;
-      text-transform: none !important;
-      color: #000;
-    }
-    .gate { background: rgba(0, 0, 0, 0.30); }
-    /* Children of XP windows also drop the chromatic-aberration shadow
-       and the panel-wide blur. */
-    .xp-window, .xp-window * {
-      text-shadow: none;
-      filter: none;
-    }
-
-    /* ---- Window chrome ---- */
-    .xp-window {
-      display: inline-flex;
-      flex-direction: column;
-      font-family: Tahoma, Verdana, 'Segoe UI', 'Lucida Grande', sans-serif;
-      font-size: 11px;
-      color: #000;
-      background: #ece9d8;
-      border: 1px solid #003c74;
-      border-radius: 8px 8px 0 0;
-      /* Inner blue rim + soft drop shadow under the window. */
-      box-shadow:
-        inset 0 0 0 1px #0831d9,
-        inset 0 0 0 2px #4790f6,
-        0 14px 36px rgba(0, 0, 0, 0.30);
-      max-width: 95vw;
-    }
-    .xp-titlebar {
-      height: 26px;
-      padding: 0 3px 0 6px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      color: #fff;
-      font-weight: bold;
-      font-size: 12px;
-      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
-      border-radius: 6px 6px 0 0;
-      background: linear-gradient(
-        to bottom,
-        #0058e6  0%,
-        #3da3ff  4%,
-        #2b8aef 12%,
-        #1761d6 64%,
-        #1156ce 88%,
-        #2071e7 100%
-      );
-      user-select: none;
-    }
-    .xp-title { padding-top: 1px; letter-spacing: 0; }
-    .xp-buttons { display: flex; gap: 1px; }
-    .xp-btn {
-      width: 22px;
-      height: 22px;
-      margin: 0;
-      padding: 0;
-      border: 1px solid #0831d9;
-      border-radius: 3px;
-      font-family: Tahoma, Verdana, sans-serif;
-      font-size: 12px;
-      font-weight: bold;
-      line-height: 1;
-      color: #fff;
-      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.45);
-      cursor: default;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .xp-btn-min, .xp-btn-max {
-      background: linear-gradient(to bottom, #4cabff, #1659be);
-    }
-    .xp-btn-close {
-      background: linear-gradient(to bottom, #f57c47, #b53726);
-      border-color: #c83020;
-    }
-    .xp-menubar {
-      padding: 1px 6px 2px;
-      font-size: 11px;
-      color: #000;
-      display: flex;
-      gap: 12px;
-      background: #ece9d8;
-      border-bottom: 1px solid #aca899;
-    }
-    .xp-menubar span { cursor: default; }
-    .xp-menubar u { text-decoration: underline; }
-    .xp-body {
-      padding: 8px;
-      background: #ece9d8;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      align-items: center;
-    }
-
-    /* ---- Minesweeper ---- */
-    .xp-window-ms { width: min(360px, 92vw); }
-
-    .minesweeper .ms-header {
-      width: 100%;
-      box-sizing: border-box;
-      background: #c0c0c0;
-      padding: 6px 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 8px;
-      /* Classic outset-inset double bevel framing the LCDs. */
-      box-shadow:
-        inset 1px 1px 0 #808080,
-        inset -1px -1px 0 #fff;
-      font-family: Tahoma, Verdana, sans-serif;
-    }
-    .minesweeper #ms-mines-left,
-    .minesweeper #ms-timer {
-      font-family: 'DSEG7 Classic', 'Courier New', monospace;
-      font-weight: bold;
-      font-size: 20px;
-      color: #ff1010;
-      background: #000;
-      padding: 1px 6px;
-      letter-spacing: 1px;
-      text-shadow: 0 0 4px rgba(255, 0, 0, 0.55);
-      min-width: 64px;
-      text-align: right;
-      border: 1px solid #000;
-      box-shadow: inset 1px 1px 0 #1a0000;
-    }
-    .minesweeper #ms-timer.low {
-      animation: none;     /* drop the existing pulse */
-      color: #ff5050;
-    }
-    /* CSS-drawn XP minesweeper smiley button. The .ms-smiley span has
-       "🙂" as text content (HTML carries it for graceful fallback if our
-       CSS doesn't load); we hide that with font-size:0 and draw a yellow
-       circle + two eye dots + a curved smile mouth via pseudo-elements. */
-    .minesweeper .ms-smiley {
-      width: 28px;
-      height: 28px;
-      padding: 0;
-      border: 0;
-      border-radius: 0;
-      background: #c0c0c0;
-      font-size: 0;                    /* hide the emoji fallback */
-      cursor: default;
-      box-shadow:
-        inset 2px 2px 0 #fff,
-        inset -2px -2px 0 #808080;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-    }
-    .minesweeper .ms-smiley::before {
-      /* the yellow face circle with two eye dots baked in */
-      content: '';
-      width: 18px;
-      height: 18px;
-      border: 1px solid #000;
-      border-radius: 50%;
-      background:
-        radial-gradient(circle at 32% 38%, #000 0 1.4px, transparent 1.7px),
-        radial-gradient(circle at 68% 38%, #000 0 1.4px, transparent 1.7px),
-        radial-gradient(circle at 50% 50%, #ffee44 60%, #f0bf00 100%);
-    }
-    .minesweeper .ms-smiley::after {
-      /* curved smile — a half-pill below the eyes */
-      content: '';
-      position: absolute;
-      width: 8px;
-      height: 5px;
-      border: 1.3px solid #000;
-      border-top: 0;
-      border-radius: 0 0 50% 50% / 0 0 100% 100%;
-      top: 14px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: transparent;
-    }
-    .minesweeper .ms-status {
-      font-family: Tahoma, Verdana, sans-serif;
-      font-size: 11px;
-      color: #000;
-      letter-spacing: 0;
-      text-transform: lowercase;
-    }
-    .minesweeper .ms-grid {
-      background: #c0c0c0;
-      padding: 3px;
-      gap: 0;
-      /* Inset bevel — looks like the grid is sunk into the chrome. */
-      box-shadow:
-        inset 2px 2px 0 #808080,
-        inset -2px -2px 0 #fff;
-    }
-    .minesweeper .ms-cell {
-      /* min(...) keeps desktop tight (~34px) but lets touch viewports
-         scale cells up to ~9 vw — gives the 9-wide grid most of the
-         screen width on mobile, so each cell is a meaningful tap target
-         instead of a 22px pinpoint. */
-      width:  min(34px, 9vw) !important;
-      height: min(34px, 9vw) !important;
-      background: #c0c0c0 !important;
-      border: 0 !important;
-      border-radius: 0 !important;
-      font-family: Tahoma, Verdana, sans-serif !important;
-      font-weight: bold !important;
-      font-size: min(15px, 4vw) !important;
-      color: #000;
-      box-shadow:
-        inset 2px 2px 0 #fff,
-        inset -2px -2px 0 #808080;
-    }
-    .minesweeper .ms-cell.revealed {
-      background: #c0c0c0 !important;
-      box-shadow:
-        inset 1px 1px 0 #808080,
-        inset -1px -1px 0 transparent !important;
-      border: none !important;
-    }
-    /* Classic XP minesweeper number palette. Inline color from JS is the
-       same priority; using !important so we win. */
-    .minesweeper .ms-cell[data-n="1"] { color: #0000ff !important; }
-    .minesweeper .ms-cell[data-n="2"] { color: #008000 !important; }
-    .minesweeper .ms-cell[data-n="3"] { color: #ff0000 !important; }
-    .minesweeper .ms-cell[data-n="4"] { color: #000080 !important; }
-    .minesweeper .ms-cell[data-n="5"] { color: #800000 !important; }
-    .minesweeper .ms-cell[data-n="6"] { color: #008080 !important; }
-    .minesweeper .ms-cell[data-n="7"] { color: #000000 !important; }
-    .minesweeper .ms-cell[data-n="8"] { color: #808080 !important; }
-    /* Flag + bomb sprites — small inline SVGs as background images, layered
-       over the cell's gray (or red, for the exploded cell) base. The JS still
-       sets the cell's textContent to "⚑" / "✱"; we hide that glyph with
-       font-size:0 so only the SVG sprite shows. */
-    .minesweeper .ms-cell.flagged {
-      font-size: 0 !important;
-      color: transparent !important;
-      background:
-        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='6' y='2.5' width='1.4' height='9.5' fill='black'/><rect x='3' y='12' width='8' height='2' fill='black'/><polygon points='7.4,2.5 12,5 7.4,7.5' fill='%23dd0000'/></svg>")
-          center/14px no-repeat,
-        #c0c0c0 !important;
-    }
-    .minesweeper .ms-cell.mine {
-      font-size: 0 !important;
-      color: transparent !important;
-      background:
-        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><g fill='black'><circle cx='8' cy='8.5' r='4'/><rect x='7' y='1.5' width='2' height='2'/><rect x='7' y='12.5' width='2' height='2'/><rect x='1.5' y='7.5' width='2' height='2'/><rect x='12.5' y='7.5' width='2' height='2'/></g><rect x='6.2' y='6.7' width='1.8' height='1.8' fill='white'/></svg>")
-          center/14px no-repeat,
-        #c0c0c0 !important;
-    }
-    .minesweeper .ms-cell.exploded {
-      font-size: 0 !important;
-      color: transparent !important;
-      background:
-        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><g fill='black'><circle cx='8' cy='8.5' r='4'/><rect x='7' y='1.5' width='2' height='2'/><rect x='7' y='12.5' width='2' height='2'/><rect x='1.5' y='7.5' width='2' height='2'/><rect x='12.5' y='7.5' width='2' height='2'/></g><rect x='6.2' y='6.7' width='1.8' height='1.8' fill='white'/></svg>")
-          center/14px no-repeat,
-        #ff0000 !important;
-    }
-    .minesweeper .ms-footer { width: 100%; justify-content: center; }
-    .minesweeper .ms-btn {
-      font-family: Tahoma, Verdana, sans-serif;
-      font-weight: normal;
-      font-size: 11px;
-      color: #000;
-      background: #ece9d8;
-      padding: 2px 14px;
-      border: 1px solid #003c74;
-      border-radius: 3px;
-      box-shadow:
-        inset 0 0 0 1px #fff,
-        inset -1px -1px 0 #aca899;
-    }
-    .minesweeper .ms-hint {
-      font-family: Tahoma, Verdana, sans-serif;
-      font-size: 10px;
-      color: #666;
-      text-transform: none;
-      letter-spacing: 0;
-    }
-
-    /* ---- Video Poker ---- */
-    .xp-window-pk { width: min(440px, 95vw); }
-
-    .poker .pk-header { width: 100%; text-align: center; }
-    .poker .pk-title {
-      font-family: Tahoma, Verdana, sans-serif;
-      font-size: 14px;
-      font-weight: bold;
-      color: #000;
-      text-transform: none;
-      letter-spacing: 0;
-      margin-bottom: 2px;
-    }
-    .poker .pk-odds-row { justify-content: center; align-items: center; }
-    .poker .pk-odds {
-      font-family: Tahoma, Verdana, sans-serif;
-      font-size: 11px;
-      color: #000;
-      text-transform: none;
-      letter-spacing: 0;
-    }
-    .poker .pk-info {
-      font-family: Tahoma, Verdana, sans-serif;
-      color: #000;
-      background: #ece9d8;
-      border: 1px solid #003c74;
-      border-radius: 3px;
-      width: 20px;
-      height: 20px;
-      box-shadow:
-        inset 0 0 0 1px #fff,
-        inset -1px -1px 0 #aca899;
-    }
-    .poker .pk-status {
-      font-family: Tahoma, Verdana, sans-serif;
-      font-size: 12px;
-      font-weight: bold;
-      color: #000;
-      letter-spacing: 0;
-      text-transform: none;
-    }
-    .poker .pk-cards {
-      background: #1b6a2e;       /* card-table felt green */
-      padding: 10px 8px;
-      border-radius: 4px;
-      box-shadow:
-        inset 1px 1px 0 #0d3517,
-        inset -1px -1px 0 #2a9947;
-      gap: 6px;
-    }
-    .poker .pk-footer { justify-content: center; }
-    .poker .pk-btn {
-      font-family: Tahoma, Verdana, sans-serif;
-      font-size: 11px;
-      font-weight: normal;
-      color: #000;
-      background: #ece9d8;
-      padding: 3px 16px;
-      border: 1px solid #003c74;
-      border-radius: 3px;
-      letter-spacing: 0;
-      text-transform: none;
-      box-shadow:
-        inset 0 0 0 1px #fff,
-        inset -1px -1px 0 #aca899;
-    }
-    .poker .pk-btn:disabled { color: #888; }
-    .poker .ms-hint {
-      font-family: Tahoma, Verdana, sans-serif;
-      font-size: 10px;
-      color: #666;
-      text-transform: none;
-      letter-spacing: 0;
-    }
-
-    /* ---- 2048 ---- */
-    .xp-window-tk { width: min(320px, 92vw); }
-
-    .tk .tk-header {
-      width: 100%;
-      box-sizing: border-box;
-      font-family: Tahoma, Verdana, sans-serif;
-      font-size: 12px;
-      font-weight: bold;
-      color: #000;
-      text-transform: none;
-      letter-spacing: 0;
-      background: #c0c0c0;
-      padding: 4px 8px;
-      box-shadow:
-        inset 1px 1px 0 #808080,
-        inset -1px -1px 0 #fff;
-      justify-content: space-between;
-    }
-    .tk .tk-status {
-      font-family: Tahoma, Verdana, sans-serif;
-      font-size: 11px;
-      color: #000;
-      text-transform: none;
-      letter-spacing: 0;
-    }
-    .tk .tk-grid {
-      background: #c0c0c0;
-      padding: 4px;
-      gap: 4px;
-      box-shadow:
-        inset 2px 2px 0 #808080,
-        inset -2px -2px 0 #fff;
-    }
-    .tk .tk-cell {
-      background: #d4d0c8 !important;
-      color: #000;
-      font-family: Tahoma, Verdana, sans-serif;
-      font-weight: bold;
-      box-shadow:
-        inset 1px 1px 0 #fff,
-        inset -1px -1px 0 #808080;
-      letter-spacing: 0;
-    }
-    /* Per-tier colors kept bright but flatter, suited to the gray chrome. */
-    .tk .tk-cell.v-2    { background: #f0e8d8 !important; color: #000; }
-    .tk .tk-cell.v-4    { background: #ecd9b0 !important; color: #000; }
-    .tk .tk-cell.v-8    { background: #f5b06b !important; color: #fff; }
-    .tk .tk-cell.v-16   { background: #f59c5e !important; color: #fff; }
-    .tk .tk-cell.v-32   { background: #f57e51 !important; color: #fff; }
-    .tk .tk-cell.v-64   { background: #f55e35 !important; color: #fff; }
-    .tk .tk-cell.v-128  { background: #edcf72 !important; color: #fff; }
-    .tk .tk-cell.v-256  { background: #edcc5f !important; color: #fff; }
-    .tk .tk-cell.v-512  { background: #edc850 !important; color: #fff; }
-    .tk .tk-cell.v-1024 { background: #edc53f !important; color: #fff; }
-    .tk .tk-cell.v-2048 { background: #edc22e !important; color: #fff; }
-    .tk .tk-btn {
-      font-family: Tahoma, Verdana, sans-serif;
-      font-size: 11px;
-      font-weight: normal;
-      color: #000;
-      background: #ece9d8;
-      padding: 2px 14px;
-      border: 1px solid #003c74;
-      border-radius: 3px;
-      letter-spacing: 0;
-      text-transform: none;
-      box-shadow:
-        inset 0 0 0 1px #fff,
-        inset -1px -1px 0 #aca899;
-    }
-    .tk .ms-hint {
-      font-family: Tahoma, Verdana, sans-serif;
-      font-size: 10px;
-      color: #666;
-      text-transform: none;
-      letter-spacing: 0;
-    }
-
-    /* "Try another way" matches the back / sound corner buttons exactly:
-       same VCR OSD Mono font, cream fill, 8-layer chromatic-aberration
-       shadow, AND the same blur+contrast filter. Without the filter the
-       hard chromatic ghost edges look shimmering / over-crisp against
-       the busy grass; with it, the ghosts soften into a clean VCR glow. */
-    .minesweeper .cycle-btn,
-    .poker .cycle-btn,
-    .tk .cycle-btn {
-      margin-top: 14px;
-      font-family: 'VCR OSD Mono', ui-monospace, monospace !important;
-      font-size: clamp(0.85rem, 2.5vw, 1.1rem);
-      color: #fff5c4 !important;
-      letter-spacing: 0.06em !important;
-      text-transform: uppercase !important;
-      background: transparent;
-      border: 0;
-      padding: 0.4rem 0.6rem;
-      filter: blur(0.55px) contrast(1.05) !important;
-      text-shadow:
-        min(-0.07em, -1px)  0                  0 rgba(255, 50, 70, 0.55),
-        max( 0.07em,  1px)  0                  0 rgba(70, 220, 255, 0.45),
-        max( 0.06em,  2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.95),
-        min(-0.06em, -2px)  max( 0.06em,  2px) 0 rgba(0, 0, 0, 0.85),
-        max( 0.06em,  2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.78),
-        min(-0.06em, -2px)  min(-0.06em, -2px) 0 rgba(0, 0, 0, 0.95),
-         0                  max( 0.08em,  2px) 0 rgba(0, 0, 0, 0.7),
-         0 0 0.22em rgba(255, 240, 180, 0.30) !important;
-    }
-    .minesweeper .cycle-btn:hover,
-    .minesweeper .cycle-btn:active,
-    .poker .cycle-btn:hover,
-    .poker .cycle-btn:active,
-    .tk .cycle-btn:hover,
-    .tk .cycle-btn:active { color: #ffea00 !important; }
+    /* 2048 cells: the shared CSS leans heavily on translucency, which looks
+       fine over the blue VHS frame on index.html but gets noisy over the
+       grass photo here. Bump every cell's alpha so the colors read solid. */
+    .tk-cell        { background: rgba(255, 245, 196, 0.18); }
+    .tk-cell.v-2    { background: rgba(255, 245, 196, 0.55); }
+    .tk-cell.v-4    { background: rgba(255, 245, 196, 0.72); }
+    .tk-cell.v-8    { background: rgba(77, 224, 255, 0.85); }
+    .tk-cell.v-16   { background: rgba(77, 255, 122, 0.88); }
+    .tk-cell.v-32   { background: rgba(255, 153, 51, 0.90); }
+    .tk-cell.v-64   { background: rgba(255, 77, 77, 0.92); }
+    .tk-cell.v-128  { background: rgba(179, 102, 255, 0.92); }
+    .tk-cell.v-256  { background: rgba(255, 102, 212, 0.94); }
+    .tk-cell.v-512  { background: rgba(255, 234, 0, 0.96); }
+    .tk-cell.v-1024 { background: rgba(255, 245, 196, 0.98); }
+    .tk-cell.v-2048 { background: rgb(255, 245, 196); }
   </style>
 </head>
 <body data-state="idle" class="vhs-running">
+
+  <!-- Same entry flow as index.html: bouncing wordmark → preloader tap →
+       password gate (or one of the three bypass games). The only difference
+       is what happens after unlock — this page skips the video sequence and
+       jumps straight to the VCR menu, sitting over the plain VHS-blue
+       backdrop (.vhs-intro frame_04). -->
 
   <div class="brand-bounce">quentin.</div>
 
@@ -546,66 +71,33 @@
   </form>
 
   <div class="minesweeper" id="minesweeper" aria-label="Minesweeper bypass">
-    <div class="xp-window xp-window-ms">
-      <div class="xp-titlebar">
-        <div class="xp-title">Minesweeper</div>
-        <div class="xp-buttons">
-          <span class="xp-btn xp-btn-min" aria-hidden="true">_</span>
-          <span class="xp-btn xp-btn-max" aria-hidden="true">□</span>
-          <span class="xp-btn xp-btn-close" aria-hidden="true">×</span>
-        </div>
-      </div>
-      <div class="xp-menubar">
-        <span><u>G</u>ame</span>
-        <span><u>H</u>elp</span>
-      </div>
-      <div class="xp-body">
-        <div class="ms-header">
-          <span id="ms-mines-left">12</span>
-          <span class="ms-smiley" aria-hidden="true">🙂</span>
-          <span class="ms-timer" id="ms-timer">2:00</span>
-        </div>
-        <div class="ms-status" id="ms-status">clear the board</div>
-        <div class="ms-grid" id="ms-grid"></div>
-        <div class="ms-footer">
-          <button type="button" class="ms-btn" id="ms-retry">retry</button>
-        </div>
-        <div class="ms-hint">right-click or long-press to flag</div>
-      </div>
+    <div class="ms-header">
+      <span id="ms-mines-left">12</span>
+      <span class="ms-timer" id="ms-timer">2:00</span>
+      <span class="ms-status" id="ms-status">clear the board</span>
     </div>
+    <div class="ms-grid" id="ms-grid"></div>
+    <div class="ms-footer">
+      <button type="button" class="ms-btn" id="ms-retry">retry</button>
+    </div>
+    <div class="ms-hint">right-click or long-press to flag</div>
     <button type="button" class="gate-try-another cycle-btn">try another way</button>
   </div>
 
   <div class="poker" id="poker" aria-label="Video poker bypass">
-    <div class="xp-window xp-window-pk">
-      <div class="xp-titlebar">
-        <div class="xp-title">Video Poker</div>
-        <div class="xp-buttons">
-          <span class="xp-btn xp-btn-min" aria-hidden="true">_</span>
-          <span class="xp-btn xp-btn-max" aria-hidden="true">□</span>
-          <span class="xp-btn xp-btn-close" aria-hidden="true">×</span>
-        </div>
-      </div>
-      <div class="xp-menubar">
-        <span><u>G</u>ame</span>
-        <span><u>H</u>elp</span>
-      </div>
-      <div class="xp-body">
-        <div class="pk-header">
-          <div class="pk-title">Video Poker</div>
-          <div class="pk-odds-row">
-            <div class="pk-odds">land four of a kind or better to unlock</div>
-            <button type="button" class="pk-info" id="pk-info-btn" aria-label="How to play and pay table" aria-haspopup="dialog" aria-controls="pk-paytable">?</button>
-          </div>
-        </div>
-        <div class="pk-status" id="pk-status">deal to begin</div>
-        <div class="pk-cards" id="pk-cards"></div>
-        <div class="pk-footer">
-          <button type="button" class="pk-btn" id="pk-action">deal</button>
-        </div>
-        <div class="ms-hint">tap a card to hold · hand <span id="pk-count">0</span></div>
+    <div class="pk-header">
+      <div class="pk-title">video poker</div>
+      <div class="pk-odds-row">
+        <div class="pk-odds">land four of a kind or better to unlock</div>
+        <button type="button" class="pk-info" id="pk-info-btn" aria-label="How to play and pay table" aria-haspopup="dialog" aria-controls="pk-paytable">?</button>
       </div>
     </div>
+    <div class="pk-status" id="pk-status">deal to begin</div>
+    <div class="pk-cards" id="pk-cards"></div>
+    <div class="pk-footer">
+      <button type="button" class="pk-btn" id="pk-action">deal</button>
+    </div>
+    <div class="ms-hint">tap a card to hold · hand <span id="pk-count">0</span></div>
     <button type="button" class="gate-try-another cycle-btn">try another way</button>
   </div>
 
@@ -635,43 +127,28 @@
   </div>
 
   <div class="tk" id="tk" aria-label="2048 bypass">
-    <div class="xp-window xp-window-tk">
-      <div class="xp-titlebar">
-        <div class="xp-title">2048</div>
-        <div class="xp-buttons">
-          <span class="xp-btn xp-btn-min" aria-hidden="true">_</span>
-          <span class="xp-btn xp-btn-max" aria-hidden="true">□</span>
-          <span class="xp-btn xp-btn-close" aria-hidden="true">×</span>
-        </div>
-      </div>
-      <div class="xp-menubar">
-        <span><u>G</u>ame</span>
-        <span><u>H</u>elp</span>
-      </div>
-      <div class="xp-body">
-        <div class="tk-header">
-          <span>2048</span>
-          <span>score <span id="tk-score">0</span></span>
-        </div>
-        <div class="tk-status" id="tk-status">reach 2048 to unlock</div>
-        <div class="tk-grid" id="tk-grid"></div>
-        <div class="tk-footer">
-          <button type="button" class="tk-btn" id="tk-new">new game</button>
-        </div>
-        <div class="ms-hint">arrow keys · wasd · swipe</div>
-      </div>
+    <div class="tk-header">
+      <span>2048</span>
+      <span>score <span id="tk-score">0</span></span>
     </div>
+    <div class="tk-status" id="tk-status">reach 2048 to unlock</div>
+    <div class="tk-grid" id="tk-grid"></div>
+    <div class="tk-footer">
+      <button type="button" class="tk-btn" id="tk-new">new game</button>
+    </div>
+    <div class="ms-hint">arrow keys · wasd · swipe</div>
     <button type="button" class="gate-try-another cycle-btn">try another way</button>
   </div>
 
   <div class="preloader" id="preloader"></div>
 
   <button type="button" class="mute-toggle" id="mute-toggle" aria-label="Toggle sound">sound: on</button>
-  <button type="button" class="back-btn" id="back-btn" aria-label="Go back">&lt; back</button>
 
   <div class="stage">
-    <!-- No videos. The .vhs-intro layer (grass photo) sits behind every
-         phase. Menu state still appears post-unlock, VCR-styled. -->
+    <!-- No videos in this variant. The .vhs-intro layer below (frame_04 blue)
+         stays on screen forever as the static backdrop, and the .menu fades in
+         over it once the gate is unlocked. Swap the .vhs-frame.active img src
+         to use a different static image. -->
 
     <div class="menu" id="menu" role="menu" aria-label="Main menu">
       <div class="menu-header">─ main menu ─</div>
@@ -721,111 +198,6 @@
         <div class="menu-item" data-i="14" data-action="text" data-text="be kind. rewind." data-ms="1600" role="menuitem" tabindex="-1">
           <span class="menu-arrow">▶</span><span class="menu-num">15</span><span class="menu-label">be kind rewind</span>
         </div>
-        <div class="menu-item" data-i="15" data-action="tracking" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">16</span><span class="menu-label">tape error</span>
-        </div>
-        <div class="menu-item" data-i="16" data-action="static" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">17</span><span class="menu-label">white noise</span>
-        </div>
-        <div class="menu-item" data-i="17" data-action="text" data-text="no signal" data-ms="1400" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">18</span><span class="menu-label">signal lost</span>
-        </div>
-        <div class="menu-item" data-i="18" data-action="colorbars" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">19</span><span class="menu-label">test pattern</span>
-        </div>
-        <div class="menu-item" data-i="19" data-action="text" data-text="after hours" data-ms="1500" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">20</span><span class="menu-label">late night</span>
-        </div>
-        <div class="menu-item" data-i="20" data-action="text" data-text="the end" data-ms="1600" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">21</span><span class="menu-label">credits</span>
-        </div>
-        <div class="menu-item" data-i="21" data-action="text" data-text="be back soon" data-ms="1600" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">22</span><span class="menu-label">intermission</span>
-        </div>
-        <div class="menu-item" data-i="22" data-action="text" data-text="cc" data-ms="1200" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">23</span><span class="menu-label">closed caption</span>
-        </div>
-        <div class="menu-item" data-i="23" data-action="text" data-text="mono" data-ms="1200" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">24</span><span class="menu-label">mono</span>
-        </div>
-        <div class="menu-item" data-i="24" data-action="text" data-text="stereo" data-ms="1200" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">25</span><span class="menu-label">stereo</span>
-        </div>
-        <div class="menu-item" data-i="25" data-action="text" data-text="surround" data-ms="1300" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">26</span><span class="menu-label">surround</span>
-        </div>
-        <div class="menu-item" data-i="26" data-action="text" data-text="mute" data-ms="1200" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">27</span><span class="menu-label">mute</span>
-        </div>
-        <div class="menu-item" data-i="27" data-action="text" data-text="vol +" data-ms="1100" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">28</span><span class="menu-label">volume up</span>
-        </div>
-        <div class="menu-item" data-i="28" data-action="text" data-text="vol -" data-ms="1100" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">29</span><span class="menu-label">volume down</span>
-        </div>
-        <div class="menu-item" data-i="29" data-action="tracking" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">30</span><span class="menu-label">brightness</span>
-        </div>
-        <div class="menu-item" data-i="30" data-action="tracking" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">31</span><span class="menu-label">contrast</span>
-        </div>
-        <div class="menu-item" data-i="31" data-action="colorbars" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">32</span><span class="menu-label">tint</span>
-        </div>
-        <div class="menu-item" data-i="32" data-action="text" data-text="ch +" data-ms="1100" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">33</span><span class="menu-label">channel up</span>
-        </div>
-        <div class="menu-item" data-i="33" data-action="text" data-text="ch -" data-ms="1100" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">34</span><span class="menu-label">channel down</span>
-        </div>
-        <div class="menu-item" data-i="34" data-action="text" data-text="last ch" data-ms="1200" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">35</span><span class="menu-label">last channel</span>
-        </div>
-        <div class="menu-item" data-i="35" data-action="static" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">36</span><span class="menu-label">preview</span>
-        </div>
-        <div class="menu-item" data-i="36" data-action="tracking" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">37</span><span class="menu-label">info</span>
-        </div>
-        <div class="menu-item" data-i="37" data-action="text" data-text="guide" data-ms="1300" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">38</span><span class="menu-label">tv guide</span>
-        </div>
-        <div class="menu-item" data-i="38" data-action="text" data-text="setup" data-ms="1300" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">39</span><span class="menu-label">setup</span>
-        </div>
-        <div class="menu-item" data-i="39" data-action="text" data-text="clock" data-ms="1300" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">40</span><span class="menu-label">clock</span>
-        </div>
-        <div class="menu-item" data-i="40" data-action="text" data-text="timer" data-ms="1300" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">41</span><span class="menu-label">timer</span>
-        </div>
-        <div class="menu-item" data-i="41" data-action="text" data-text="eject ▲" data-ms="1500" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">42</span><span class="menu-label">eject</span>
-        </div>
-        <div class="menu-item" data-i="42" data-action="text" data-text="line 1" data-ms="1200" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">43</span><span class="menu-label">line in 1</span>
-        </div>
-        <div class="menu-item" data-i="43" data-action="text" data-text="line 2" data-ms="1200" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">44</span><span class="menu-label">line in 2</span>
-        </div>
-        <div class="menu-item" data-i="44" data-action="text" data-text="coax" data-ms="1200" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">45</span><span class="menu-label">coax</span>
-        </div>
-        <div class="menu-item" data-i="45" data-action="text" data-text="rca" data-ms="1200" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">46</span><span class="menu-label">rca</span>
-        </div>
-        <div class="menu-item" data-i="46" data-action="text" data-text="svhs" data-ms="1300" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">47</span><span class="menu-label">s-vhs</span>
-        </div>
-        <div class="menu-item" data-i="47" data-action="deadair" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">48</span><span class="menu-label">dead air 2</span>
-        </div>
-        <div class="menu-item" data-i="48" data-action="static" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">49</span><span class="menu-label">snow</span>
-        </div>
-        <div class="menu-item" data-i="49" data-action="poweroff" role="menuitem" tabindex="-1">
-          <span class="menu-arrow">▶</span><span class="menu-num">50</span><span class="menu-label">goodbye</span>
-        </div>
       </div>
       <div class="menu-footer">▲▼ navigate &nbsp;&nbsp; enter select</div>
     </div>
@@ -840,7 +212,9 @@
       <div class="fx-poweroff-line"></div>
     </div>
 
-    <!-- Static backdrop — grass photo, same as menu.html. -->
+    <!-- Static backdrop. Grass photo sits behind every phase — preloader,
+         gate, games, menu — so the whole page reads as one continuous surface.
+         Swap the <img>'s src/srcset to use a different image. -->
     <div class="vhs-intro" id="vhs-intro">
       <picture>
         <source srcset="grass-hd.jpg" media="(pointer: fine)">
