@@ -240,14 +240,18 @@
         inset -2px -2px 0 #fff;
     }
     .minesweeper .ms-cell {
-      width: 22px !important;
-      height: 22px !important;
+      /* min(...) keeps desktop tight (~34px) but lets touch viewports
+         scale cells up to ~9 vw — gives the 9-wide grid most of the
+         screen width on mobile, so each cell is a meaningful tap target
+         instead of a 22px pinpoint. */
+      width:  min(34px, 9vw) !important;
+      height: min(34px, 9vw) !important;
       background: #c0c0c0 !important;
       border: 0 !important;
       border-radius: 0 !important;
-      font-family: Tahoma, sans-serif !important;
+      font-family: Tahoma, Verdana, sans-serif !important;
       font-weight: bold !important;
-      font-size: 14px !important;
+      font-size: min(15px, 4vw) !important;
       color: #000;
       box-shadow:
         inset 2px 2px 0 #fff,
