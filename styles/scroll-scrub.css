@@ -917,6 +917,14 @@
     .stage {
       position: fixed;
       inset: 0;
+      /* Belt-and-suspenders for iOS Safari: explicit large-viewport units
+         force the stage to span the FULL screen height including the
+         strips under the status bar and URL bar, so the backdrop image
+         (vhs-intro, which lives inside this stage) covers those zones.
+         Without these the stage was being sized to the layout viewport
+         only, and Safari's translucent chrome saw solid black behind it. */
+      width: 100vw;
+      height: 100lvh;
       overflow: hidden;
       /* Black like body — gives iOS chrome the cleanest sample of the
          video content above it. */
@@ -1282,6 +1290,11 @@
     .vhs-intro {
       position: fixed;
       inset: 0;
+      /* Explicit large-viewport sizing for iOS Safari — see comment on
+         .stage above. Without these the backdrop stops at the layout
+         viewport edges and the safe-area strips show solid black. */
+      width: 100vw;
+      height: 100lvh;
       z-index: 50;
       /* Black like body/stage — frames cover this fully, so the bg only
          shows during the brief load window. */
