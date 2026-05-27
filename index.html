@@ -3,10 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <!-- theme-color tints iOS Safari's status bar and URL bar. We use the
-       average color sampled from grass.jpg (#6b6737) so the chrome reads
-       as part of the backdrop instead of as a hard black edge. -->
-  <meta name="theme-color" content="#6b6737">
+  <!-- Deliberately NO theme-color. Setting it makes iOS Safari render
+       the URL bar / status bar as SOLID at that color and kills the
+       built-in translucency. Without it, Safari blurs the page content
+       through the chrome — which is the effect we want so the grass
+       image reads through the URL bar at the bottom. -->
   <title>quentin.</title>
   <link rel="stylesheet" href="styles/scroll-scrub.css">
   <style>
